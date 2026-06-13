@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -559,16 +559,16 @@
         }
 
         function checkPin() {
-            // קוד כניסה כרגע הוא 1234
-            if (enteredPin === '1234') {
+            // קוד כניסה מעודכן לפי בקשת המשתמש
+            if (enteredPin === '3636') {
                 LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0_branch1';
                 FIREBASE_DOC_ID = 'globrands_branch1';
-                CURRENT_BRANCH_NAME = 'סניף ראשי';
+                CURRENT_BRANCH_NAME = 'מיני מרקט שלום';
                 loginSuccess();
-            } else if (enteredPin === '0000') {
+            } else if (enteredPin === '2525') {
                 LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0_branch2';
                 FIREBASE_DOC_ID = 'globrands_branch2';
-                CURRENT_BRANCH_NAME = 'סניף משני';
+                CURRENT_BRANCH_NAME = 'סופר קירי';
                 loginSuccess();
             } else {
                 pinError.classList.remove('opacity-0');
