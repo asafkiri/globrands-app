@@ -1,0 +1,1938 @@
+```html
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="גלוברנס">
+    <title>הזמנת מוצרים - גלוברנס V1.0</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+
+    <!-- Excel (SheetJS) library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        /* Category Colors for Globrands */
+        .cat-pallmall { background-color: #fef2f2; border-color: #fecaca; border-right-width: 4px; border-right-color: #dc2626; } 
+        .cat-winston { background-color: #eff6ff; border-color: #bfdbfe; border-right-width: 4px; border-right-color: #2563eb; } 
+        .cat-ld { background-color: #f5f3ff; border-color: #ede9fe; border-right-width: 4px; border-right-color: #8b5cf6; } 
+        .cat-camel { background-color: #fefce8; border-color: #fef08a; border-right-width: 4px; border-right-color: #eab308; } 
+        .cat-kent { background-color: #f8fafc; border-color: #e2e8f0; border-right-width: 4px; border-right-color: #64748b; } 
+        .cat-vogue { background-color: #ecfeff; border-color: #cffafe; border-right-width: 4px; border-right-color: #06b6d4; } 
+        .cat-tobacco { background-color: #f0fdf4; border-color: #bbf7d0; border-right-width: 4px; border-right-color: #22c55e; } 
+        .cat-general { background-color: white; border-color: #e2e8f0; border-right-width: 4px; border-right-color: #94a3b8; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .selected-product { 
+            border-color: #2563eb !important; 
+            box-shadow: 0 0 0 1.5px #2563eb; 
+            background-color: white !important; 
+        }
+        
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .safe-pt { padding-top: env(safe-area-inset-top, 0px); }
+
+        select, input[type="number"] {
+            text-align: center;
+            text-align-last: center;
+            -moz-appearance: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        select::-ms-expand { display: none; }
+        input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: bold; }
+        .tab-inactive { border-bottom: 2px solid transparent; color: #64748b; font-weight: normal; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+        .shake-error { animation: shake 0.4s ease-in-out; }
+        
+        .pin-dot {
+            transition: all 0.2s;
+        }
+        .pin-dot.filled {
+            background-color: #1e3a8a; 
+            border-color: #1e3a8a;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 m-0 p-0 flex flex-col min-h-screen pb-56 overscroll-y-none">
+
+    <!-- מסך התחברות (PIN Code Screen) -->
+    <div id="loginScreen" class="fixed inset-0 z-[999] bg-slate-100 flex flex-col items-center justify-center safe-pb safe-pt">
+        <div class="w-full max-w-sm px-6 flex flex-col items-center">
+            
+            <div class="w-16 h-16 bg-blue-900 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                <i class="fa-solid fa-leaf text-3xl text-white"></i>
+            </div>
+            
+            <h1 class="text-2xl font-black text-blue-900 mb-2">גלוברנס - כניסה</h1>
+            <p class="text-sm text-slate-500 mb-8 font-medium">הזן קוד סניף להמשך</p>
+            
+            <div id="pinDisplay" class="flex gap-4 mb-10" dir="ltr">
+                <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300"></div>
+            </div>
+
+            <div id="pinError" class="text-red-500 font-bold text-sm mb-4 h-5 opacity-0 transition-opacity">
+                קוד שגוי, נסה שוב
+            </div>
+
+            <div class="grid grid-cols-3 gap-4 w-full px-4" dir="ltr">
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">1</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">2</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">3</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">4</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">5</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">6</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">7</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">8</button>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">9</button>
+                <div class="h-16"></div>
+                <button class="keypad-btn h-16 bg-white rounded-xl shadow-sm text-2xl font-bold text-slate-800 hover:bg-slate-50 active:bg-slate-200 transition-colors border border-slate-200">0</button>
+                <button class="keypad-del h-16 bg-slate-200 rounded-xl shadow-sm text-xl text-slate-600 hover:bg-slate-300 active:bg-slate-400 transition-colors border border-slate-300 flex items-center justify-center">
+                    <i class="fa-solid fa-delete-left"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- מעטפת האפליקציה המקורית -->
+    <div id="mainAppWrapper" class="hidden flex-col w-full min-h-screen">
+        <!-- Header -->
+        <header class="bg-blue-900 text-white p-3 safe-pt shadow-md sticky top-0 z-20 w-full flex-none transition-colors duration-300" id="mainHeader">
+            <div class="max-w-4xl mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i id="headerIcon" class="fa-solid fa-leaf text-lg"></i>
+                    <div class="flex flex-col">
+                        <h1 id="headerTitle" class="text-lg font-bold leading-none">גלוברנס - <span id="branchNameHeader">סורק מדויק</span></h1>
+                        <div class="flex items-center gap-1 mt-1 cursor-pointer" id="status-area">
+                            <div id="sync-dot" class="w-2 h-2 rounded-full bg-blue-400"></div>
+                            <span id="sync-status" class="text-[10px] text-blue-200">מתחבר...</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="btnEditToggle" class="bg-blue-800 hover:bg-blue-700 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-all shadow-sm border border-blue-700">
+                    <i class="fa-solid fa-pen-to-square"></i> <span id="editBtnText">עריכה</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="w-full flex-1 p-2 sm:p-4 space-y-3 max-w-4xl mx-auto">
+            
+            <div id="contactEditArea" class="hidden bg-slate-100 p-3 rounded-lg border border-slate-300 mb-3 shadow-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-sm font-bold text-slate-800">ניהול אנשי קשר</h3>
+                    <div class="flex items-center gap-2 bg-white px-2 py-1 rounded border border-slate-200">
+                        <span class="text-[10px] font-bold text-slate-600">מס' לקוח:</span>
+                        <input type="text" id="customerNumberInput" class="w-20 text-xs font-bold text-center outline-none bg-transparent" dir="ltr">
+                    </div>
+                </div>
+                <div id="contactsManagerList" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="newContactName" placeholder="שם איש קשר" class="flex-1 text-xs p-2 rounded-md border border-slate-300 outline-none focus:border-blue-500">
+                    <input type="tel" id="newContactPhone" placeholder="מספר טלפון" class="flex-1 text-xs p-2 rounded-md border border-slate-300 outline-none text-left focus:border-blue-500" dir="ltr">
+                    <button id="btnAddContact" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-md text-xs font-bold transition-colors"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </div>
+
+            <div id="normalControls">
+                <div class="grid grid-cols-3 gap-2 mb-3">
+                    <button id="btnUploadPos" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 p-2 rounded-lg text-xs font-bold shadow-sm flex flex-col items-center justify-center gap-1 transition-colors text-center h-16 relative overflow-hidden">
+                        <div class="absolute inset-0 bg-emerald-200 opacity-20 hidden" id="posBtnGlow"></div>
+                        <i class="fa-solid fa-file-invoice text-lg"></i> סורק דוח קופה
+                    </button>
+                    <button id="btnManualPulls" class="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 p-2 rounded-lg text-xs font-bold shadow-sm flex flex-col items-center justify-center gap-1 transition-colors text-center h-16">
+                        <i class="fa-solid fa-hand-holding-hand text-lg"></i> משיכות פחת
+                    </button>
+                    <button id="btnOpenBaselineModal" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 p-2 rounded-lg text-[11px] font-bold shadow-sm flex flex-col items-center justify-center gap-1 transition-colors text-center h-16">
+                        <i class="fa-solid fa-boxes-stacked text-lg"></i> מלאי עדכני אחרון
+                    </button>
+                </div>
+
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 mb-3">
+                    <label class="block text-sm font-medium text-slate-600 mb-2">שליחה ל:</label>
+                    <div class="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-md px-2 py-1.5 focus-within:border-blue-500 focus-within:ring-1">
+                        <i class="fa-solid fa-address-book text-slate-400 text-sm"></i>
+                        <input type="tel" id="agentPhone" value="" placeholder="מספר טלפון..." class="bg-transparent border-none outline-none flex-1 text-left w-full text-sm font-semibold text-slate-700" dir="ltr">
+                    </div>
+                    <div id="contactsQuickList" class="flex gap-2 mt-3 overflow-x-auto pb-1 hide-scrollbar"></div>
+                </div>
+
+                <div class="sticky top-[60px] z-10 bg-slate-50 pt-1 pb-3 -mx-2 px-2 shadow-[0_4px_6px_-6px_rgba(0,0,0,0.1)]">
+                    <div class="flex items-center gap-2 bg-white border border-slate-300 rounded-md px-2 py-2 shadow-sm focus-within:border-blue-500 focus-within:ring-1">
+                        <i class="fa-solid fa-magnifying-glass text-slate-400 text-sm"></i>
+                        <input type="text" id="searchInput" placeholder="חפש מוצר..." class="bg-transparent border-none outline-none flex-1 w-full text-sm">
+                        <button id="clearSearch" class="hidden text-slate-400 p-1 bg-slate-100 rounded-full w-5 h-5 flex items-center justify-center">
+                            <i class="fa-solid fa-times text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap justify-between items-center mb-2 mt-2 gap-y-2">
+                    <h2 class="text-sm font-semibold text-slate-600">מסך הזמנה (<span id="totalProductsCount">0</span>)</h2>
+                    <div class="flex gap-1.5 flex-wrap justify-end">
+                        <button id="btnClearOrder" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 transition-colors px-2 py-1.5 rounded border border-red-200 shadow-sm font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-eraser"></i> ניקוי מסך
+                        </button>
+                        <button id="btnSales" class="text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors px-2 py-1.5 rounded border border-indigo-200 shadow-sm font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-magnifying-glass-chart"></i> חוסרים
+                        </button>
+                        <button id="btnHistory" class="text-xs text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors px-2 py-1.5 rounded border border-slate-200 shadow-sm flex items-center gap-1">
+                            <i class="fa-solid fa-clock-rotate-left"></i> היסטוריה
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <form id="orderForm" onsubmit="return false;">
+                <div id="productsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+            </form>
+
+            <button id="hardResetBtn" class="hidden w-full mt-3 bg-red-50 text-red-600 border border-red-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm">
+                <i class="fa-solid fa-rotate-left text-lg"></i> איפוס כל ההתראות והיסטוריית הממוצעים
+            </button>
+
+            <div id="noResults" class="hidden col-span-full text-center py-8 text-slate-500 bg-white rounded-lg border border-dashed border-slate-300 text-sm">
+                לא נמצאו מוצרים.
+            </div>
+        </main>
+
+        <!-- Bottom Bar -->
+        <div id="bottomBar" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 safe-pb shadow-[0_-10px_20px_rgba(0,0,0,0.08)] z-30 w-full transition-transform duration-300">
+            <div class="max-w-4xl mx-auto flex flex-col gap-2">
+                <div class="text-sm font-bold text-slate-800 text-center flex justify-between items-center px-1">
+                    <span>סה"כ: <span id="header-count-num" class="text-blue-600 text-base">0</span> פריטים להזמנה</span>
+                    
+                    <div class="flex gap-2">
+                        <button id="btnToggleDouble" class="text-xs text-white bg-emerald-500 hover:bg-emerald-600 border border-emerald-600 transition-colors px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center justify-center gap-1 w-24">
+                            <i class="fa-solid fa-basket-shopping" id="toggleIcon"></i> 
+                            <span id="toggleText">רגילה</span>
+                        </button>
+                        <button id="btnFinishOrder" class="text-xs text-white bg-blue-600 hover:bg-blue-700 transition-colors px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-check"></i> סיום ושליחה
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2 w-full mt-1">
+                    <button id="copyBtn" class="hidden flex-[0.3] flex-col items-center justify-center py-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 font-bold transition-all">
+                        <i class="fa-regular fa-copy text-lg mb-0.5"></i>
+                        <span class="text-[9px]">העתק</span>
+                    </button>
+                    
+                    <a id="whatsappLink" href="#" target="_blank" class="hidden flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-sm bg-emerald-500 hover:bg-emerald-600 transition-colors text-white shadow-md shadow-emerald-500/20 no-underline">
+                        <i class="fa-brands fa-whatsapp text-xl"></i>
+                        <span>וואטסאפ</span>
+                    </a>
+
+                    <a id="smsLink" href="#" target="_top" class="hidden flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-sm bg-blue-500 hover:bg-blue-600 transition-colors text-white shadow-md shadow-blue-500/20 no-underline">
+                        <i class="fa-solid fa-comment-sms text-xl"></i>
+                        <span>SMS</span>
+                    </a>
+                    
+                    <div id="disabledSendBtn" class="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-sm bg-slate-100 text-slate-400 border border-slate-200 text-center">
+                        <span>המערכת לא זיהתה חוסרים להזמנה</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals... -->
+        <div id="customModal" class="hidden fixed inset-0 bg-slate-900/40 z-[120] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+                <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 border border-slate-200">
+                    <i id="modalIcon" class="fa-solid fa-bell text-xl"></i>
+                </div>
+                <h3 id="modalTitle" class="text-lg font-bold text-slate-800 mb-2"></h3>
+                <p id="modalMessage" class="text-sm text-slate-600 mb-4 whitespace-pre-wrap"></p>
+                <div class="flex gap-3 mt-2">
+                    <button id="modalCancel" class="hidden flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold transition-colors">ביטול</button>
+                    <button id="modalConfirm" class="flex-1 bg-blue-800 hover:bg-blue-900 text-white py-2.5 rounded-xl font-semibold shadow-md shadow-blue-500/30 transition-colors">אישור</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Baseline Inventory Modal -->
+        <div id="baselineModal" class="hidden fixed inset-0 bg-slate-900/70 z-[80] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-blue-200 bg-blue-50 flex justify-between items-center">
+                    <h3 class="font-bold text-blue-900 text-sm flex items-center gap-2"><i class="fa-solid fa-boxes-stacked"></i> תיקיית מלאי עדכני אחרון</h3>
+                    <button id="closeBaselineBtn" class="text-blue-400 hover:text-blue-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="p-2 bg-blue-50 border-b border-blue-100 text-[11px] text-blue-800 leading-tight">
+                    <i class="fa-solid fa-circle-info mr-1"></i> הנתונים כאן נשמרים כבסיס. סריקת קובץ מכירות תוריד מכאן את המלאי שנמכר ותקליד את התוצאה למסך הראשי.
+                </div>
+                <div class="p-2 bg-white border-b border-slate-200 sticky top-0 shadow-sm z-10">
+                     <input type="text" id="searchBaseline" placeholder="חפש מוצר..." class="w-full text-xs p-2 rounded-md border border-slate-300 outline-none bg-slate-50 focus:border-blue-500">
+                </div>
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-100" id="baselineListContainer"></div>
+                <div class="p-3 bg-white border-t border-slate-200">
+                    <button id="saveBaselineBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors text-sm">
+                        שמור מלאי אחרון למערכת
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Modal -->
+        <div id="historyModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-slate-500"></i> היסטוריית הזמנות</h3>
+                    <button id="closeHistoryBtn" class="text-slate-400 hover:text-slate-600 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div id="historyListContainer" class="p-3 overflow-y-auto flex-1 space-y-3 bg-slate-100"></div>
+            </div>
+        </div>
+
+        <!-- Edit Order Modal -->
+        <div id="orderEditModal" class="hidden fixed inset-0 bg-slate-900/70 z-[70] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-blue-200 bg-blue-50 flex justify-between items-center">
+                    <h3 class="font-bold text-blue-900 text-sm flex items-center gap-2"><i class="fa-solid fa-pen-to-square"></i> עריכת הזמנה - <span id="editOrderDateStr"></span></h3>
+                    <button id="closeOrderEditBtn" class="text-blue-400 hover:text-blue-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="p-2 bg-white border-b border-slate-200 sticky top-0 shadow-sm z-10">
+                     <input type="text" id="searchEditOrder" placeholder="חפש מוצר לשינוי כמות..." class="w-full text-xs p-2 rounded-md border border-slate-300 outline-none bg-slate-50 focus:border-blue-500">
+                </div>
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-100" id="orderEditListContainer"></div>
+                <div class="p-3 bg-white border-t border-slate-200">
+                    <button id="saveOrderEditBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors text-sm">
+                        שמור שינויים ועדכן ממוצעים/דוחות
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- View Stock Modal -->
+        <div id="stockHistoryModal" class="hidden fixed inset-0 bg-slate-900/70 z-[75] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-indigo-200 bg-indigo-50 flex justify-between items-center">
+                    <h3 class="font-bold text-indigo-900 text-sm flex items-center gap-2"><i class="fa-solid fa-box-archive"></i> מלאי שנספר - <span id="stockHistoryDateStr"></span></h3>
+                    <button id="closeStockHistoryBtn" class="text-indigo-400 hover:text-indigo-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="p-2 bg-indigo-50 border-b border-indigo-100 text-[11px] text-indigo-800 leading-tight">
+                    <i class="fa-solid fa-circle-info mr-1"></i> מלאי זה מייצג את מה שהיה פיזית בעסק באותו תאריך.
+                </div>
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-100" id="stockHistoryListContainer"></div>
+            </div>
+        </div>
+
+        <!-- MISSING CHECK MODAL -->
+        <div id="salesModal" class="hidden fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[95vh] flex flex-col overflow-hidden border-2 border-indigo-500">
+                <div class="p-3 border-b border-indigo-200 bg-indigo-50 flex justify-between items-center">
+                    <h3 class="font-bold text-indigo-900 text-sm flex items-center gap-2"><i class="fa-solid fa-magnifying-glass-chart text-indigo-600"></i> בדיקת חוסרים</h3>
+                    <button id="closeSalesBtn" class="text-indigo-400 hover:text-indigo-600 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div class="p-3 bg-white text-sm font-bold text-slate-800 text-center border-b border-slate-200 shadow-sm z-10 relative">
+                    הכנס בבקשה את המלאי הנוכחי
+                </div>
+                
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-100" id="missingCheckListContainer"></div>
+                
+                <div class="p-3 bg-indigo-50 border-t border-indigo-200 relative">
+                    <div id="aiLoadingOverlay" class="hidden absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center z-20 rounded-b-2xl pb-4">
+                        <i class="fa-solid fa-spinner fa-spin text-indigo-600 text-5xl mb-4 drop-shadow-md"></i>
+                        <span id="aiLoadingText" class="text-sm font-bold text-indigo-800 text-center px-6 leading-relaxed">בודק חוסרים...<br><span class="text-xs text-indigo-600 font-normal">מחשב מול הספירה הקודמת</span></span>
+                    </div>
+
+                    <div class="text-xs font-bold text-indigo-900 mb-2 text-center" id="missingCheckDatePrompt">
+                        <!-- Dynamic Text -->
+                    </div>
+                    
+                    <div class="flex gap-2 mb-2">
+                        <button id="tabBtnExcelMissing" class="flex-1 bg-green-100 border-2 border-green-500 text-green-800 font-bold py-1.5 rounded-lg relative transition-all">
+                            <span class="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] px-2 py-0.5 rounded-full shadow-sm animate-pulse">מומלץ</span>
+                            <i class="fa-solid fa-file-excel mb-0.5 text-sm"></i><br><span class="text-[10px]">דוח אקסל</span>
+                        </button>
+                        <button id="tabBtnPdfMissing" class="flex-1 bg-slate-100 border border-slate-300 text-slate-600 font-bold py-1.5 rounded-lg transition-all opacity-70 hover:opacity-100">
+                            <i class="fa-solid fa-file-pdf mb-0.5 text-sm"></i><br><span class="text-[10px]">דוח PDF</span>
+                        </button>
+                    </div>
+
+                    <div id="areaExcelMissing" class="mb-2">
+                        <div class="flex gap-2 items-stretch">
+                            <input type="file" id="excelMissingInput" accept=".xlsx, .xls, .csv" class="flex-1 block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 border-2 border-dashed border-green-300 rounded-lg transition-colors cursor-pointer bg-white">
+                        </div>
+                    </div>
+
+                    <div id="areaPdfMissing" class="mb-2 hidden">
+                        <div class="flex gap-2 items-stretch">
+                            <input type="file" id="pdfMissingInput" accept="application/pdf" class="flex-1 block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:font-semibold file:bg-indigo-50 file:text-indigo-800 hover:file:bg-indigo-100 border-2 border-dashed border-indigo-300 rounded-lg transition-colors cursor-pointer bg-white">
+                        </div>
+                    </div>
+
+                    <button id="btnProcessMissingCheck" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-calculator"></i> בצע בדיקת חוסרים
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MISSING CHECK RESULT MODAL -->
+        <div id="missingResultModal" class="hidden fixed inset-0 bg-slate-900/90 z-[110] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border-2 border-red-500">
+                <div class="p-3 border-b border-red-200 bg-red-50 flex justify-between items-center">
+                    <h3 class="font-bold text-red-900 text-sm flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> תוצאות הבדיקה</h3>
+                    <button id="closeMissingResultBtn" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-50" id="missingResultsList"></div>
+                
+                <div class="p-4 bg-white border-t border-slate-200" id="missingResultActionArea">
+                    <div class="text-sm font-bold text-slate-800 text-center mb-3">האם לעדכן את החוסר באפליקציה?</div>
+                    <div class="flex gap-3">
+                        <button id="btnCancelMissingFix" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors text-sm border border-slate-300">
+                            לא
+                        </button>
+                        <button id="btnConfirmMissingFix" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors text-sm">
+                            כן, לעדכן
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual Pulls Modal -->
+        <div id="manualPullsModal" class="hidden fixed inset-0 bg-slate-900/70 z-[80] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-orange-200 bg-orange-50 flex justify-between items-center">
+                    <h3 class="font-bold text-orange-900 text-sm flex items-center gap-2"><i class="fa-solid fa-hand-holding-hand"></i> משיכות פחת/אישי</h3>
+                    <button id="closeManualPullsBtn" class="text-orange-400 hover:text-orange-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="p-2 bg-orange-50 border-b border-orange-100 text-[11px] text-orange-800 leading-tight">
+                    <i class="fa-solid fa-circle-info mr-1"></i> כל קופסה שתזין כאן תרד אוטומטית מהמלאי בעת קליטת דוח קופה.
+                </div>
+                <div class="p-2 bg-white border-b border-slate-200 sticky top-0 shadow-sm z-10">
+                     <input type="text" id="searchPulls" placeholder="חפש מוצר..." class="w-full text-xs p-2 rounded-md border border-slate-300 outline-none bg-slate-50 focus:border-orange-500">
+                </div>
+                <div class="p-2 overflow-y-auto flex-1 bg-slate-100" id="pullsListContainer"></div>
+                <div class="p-3 bg-white border-t border-slate-200">
+                    <button id="savePullsBtn" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors text-sm">
+                        שמור משיכות עד לדוח הבא
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scanner Upload Modal -->
+        <div id="posUploadModal" class="hidden fixed inset-0 bg-slate-900/80 z-[90] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col overflow-hidden border-2 border-blue-500">
+                <div class="p-4 border-b border-blue-200 bg-blue-50 flex justify-between items-center">
+                    <h3 class="font-bold text-blue-900 flex items-center gap-2"><i class="fa-solid fa-file-invoice"></i> סורק דוחות קופה</h3>
+                    <button id="closePosUploadBtn" class="text-blue-400 hover:text-blue-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                
+                <div class="p-4 flex flex-col gap-4 relative">
+                    
+                    <div id="aiLoadingOverlayPos" class="hidden absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center z-20 rounded-b-2xl pb-4">
+                        <i class="fa-solid fa-spinner fa-spin text-blue-600 text-5xl mb-4 drop-shadow-md"></i>
+                        <span id="aiLoadingTextPos" class="text-sm font-bold text-blue-800 text-center px-6 leading-relaxed">קורא את הקובץ...<br><span class="text-xs text-blue-600 font-normal">הפעולה מתבצעת על המכשיר שלך</span></span>
+                    </div>
+
+                    <div class="bg-blue-50 text-blue-800 p-3 rounded-lg border border-blue-200 text-sm mb-2">
+                        <span class="text-[10px] text-slate-500">המלאי עדכני אחרון בארכיון עודכן ב: <span id="lastSnapshotTimeDisplay" class="font-black text-blue-900" dir="ltr"></span></span>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="tabBtnExcel" class="flex-1 bg-green-100 border-2 border-green-500 text-green-800 font-bold py-2 rounded-lg relative transition-all">
+                            <span class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm animate-pulse">מומלץ</span>
+                            <i class="fa-solid fa-file-excel mb-1 text-lg"></i><br><span class="text-xs">קובץ אקסל</span>
+                        </button>
+                        <button id="tabBtnPdf" class="flex-1 bg-slate-100 border border-slate-300 text-slate-600 font-bold py-2 rounded-lg transition-all opacity-70 hover:opacity-100">
+                            <i class="fa-solid fa-file-pdf mb-1 text-lg"></i><br><span class="text-xs">קובץ PDF</span>
+                        </button>
+                    </div>
+
+                    <div id="areaExcel" class="mt-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">בחר קובץ אקסל (XLSX, XLS, CSV):</label>
+                        <div class="flex gap-2 items-stretch">
+                            <input type="file" id="excelImageInput" accept=".xlsx, .xls, .csv" class="flex-1 block w-full text-xs text-slate-500 file:mr-4 file:py-3 file:px-4 file:rounded-xl file:border-0 file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 border-2 border-dashed border-green-300 rounded-xl transition-colors cursor-pointer">
+                        </div>
+                        <div class="text-[10px] text-green-700 mt-2 font-bold bg-green-50 p-2 rounded">
+                            <i class="fa-solid fa-circle-check"></i> סורק האקסל מזהה עמודות אוטומטית. שמות המוצרים יימשכו בדיוק לפי השמות במסך הראשי.
+                        </div>
+                    </div>
+
+                    <div id="areaPdf" class="mt-2 hidden">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">בחר קובץ דוח (PDF בלבד):</label>
+                        <div class="flex gap-2 items-stretch">
+                            <input type="file" id="posImageInput" accept="application/pdf" class="flex-1 block w-full text-xs text-slate-500 file:mr-4 file:py-3 file:px-4 file:rounded-xl file:border-0 file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border-2 border-dashed border-blue-300 rounded-xl transition-colors cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-200 pt-3 mt-2">
+                        <button id="btnProcessAI" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all text-sm flex items-center justify-center gap-2 group">
+                            <i class="fa-solid fa-bolt"></i> סרוק ועדכן מלאי
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Review Extraction Modal -->
+        <div id="posReviewModal" class="hidden fixed inset-0 bg-slate-900/80 z-[95] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border-2 border-emerald-500">
+                <div class="p-3 border-b border-emerald-200 bg-emerald-50 flex justify-between items-center">
+                    <h3 class="font-bold text-emerald-900 text-sm flex items-center gap-2"><i class="fa-solid fa-eye"></i> תוצאות סריקה</h3>
+                    <button id="closePosReviewBtn" class="text-emerald-400 hover:text-emerald-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="p-3 bg-emerald-50 border-b border-emerald-100 text-xs text-emerald-800 leading-tight">
+                    <i class="fa-solid fa-circle-check mr-1"></i> אלו המכירות שחולצו מהקובץ. <br>
+                    <span class="font-bold">* פאקטים הומרו אוטומטית ליחידות, והכל חולק לפאקטים ויחידות לתצוגה נוחה.</span>
+                    <button id="btnShowOriginalDoc" class="mt-2 w-full bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 font-bold py-2 rounded-lg shadow-sm transition-colors text-xs flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-pdf"></i> הצג קובץ מקורי לבדיקה (רק עבור PDF)
+                    </button>
+                </div>
+                <div class="p-2 bg-slate-50 border-b border-slate-200 text-xs text-slate-600 flex justify-between px-4 font-bold">
+                    <span>שם המוצר</span>
+                    <span>כמות שנסרקה</span>
+                </div>
+                <div class="p-2 overflow-y-auto flex-1 bg-white" id="posReviewListContainer"></div>
+                <div class="p-3 bg-white border-t border-slate-200">
+                    <button id="confirmPosReviewBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check-double text-lg"></i> הנתונים מדויקים, עדכן מלאי למסך!
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document/Image Preview Modal -->
+        <div id="pdfPreviewModal" class="hidden fixed inset-0 bg-slate-900/90 z-[150] flex items-center justify-center p-2 backdrop-blur-sm transition-opacity">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2"><i class="fa-regular fa-file-image text-blue-600"></i> תצוגה מקדימה</h3>
+                    <button id="closePdfPreviewBtn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="flex-1 bg-slate-200 p-2 w-full h-full relative flex items-center justify-center overflow-hidden">
+                    <iframe id="docPreviewFrame" class="w-full h-full rounded border border-slate-300 bg-white hidden"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Block -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0'; 
+        let FIREBASE_DOC_ID = 'main_sync_globrands'; 
+        let CURRENT_BRANCH_NAME = '';
+        
+        let enteredPin = '';
+        const dots = document.querySelectorAll('.pin-dot');
+        const pinError = document.getElementById('pinError');
+
+        function updatePinDisplay() {
+            dots.forEach((dot, index) => {
+                if (index < enteredPin.length) {
+                    dot.classList.add('filled');
+                } else {
+                    dot.classList.remove('filled');
+                }
+            });
+        }
+
+        function checkPin() {
+            // קוד כניסה כרגע הוא 1234
+            if (enteredPin === '1234') {
+                LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0_branch1';
+                FIREBASE_DOC_ID = 'globrands_branch1';
+                CURRENT_BRANCH_NAME = 'סניף ראשי';
+                loginSuccess();
+            } else if (enteredPin === '0000') {
+                LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0_branch2';
+                FIREBASE_DOC_ID = 'globrands_branch2';
+                CURRENT_BRANCH_NAME = 'סניף משני';
+                loginSuccess();
+            } else {
+                pinError.classList.remove('opacity-0');
+                const display = document.getElementById('pinDisplay');
+                display.classList.add('shake-error');
+                setTimeout(() => display.classList.remove('shake-error'), 400);
+                
+                enteredPin = '';
+                updatePinDisplay();
+            }
+        }
+
+        function loginSuccess() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainAppWrapper').classList.remove('hidden');
+            document.getElementById('mainAppWrapper').classList.add('flex');
+            document.getElementById('branchNameHeader').innerText = CURRENT_BRANCH_NAME;
+            init();
+        }
+
+        document.querySelectorAll('.keypad-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (enteredPin.length < 4) {
+                    enteredPin += e.target.innerText;
+                    updatePinDisplay();
+                    pinError.classList.add('opacity-0');
+                    if (enteredPin.length === 4) {
+                        setTimeout(checkPin, 100);
+                    }
+                }
+            });
+        });
+
+        document.querySelector('.keypad-del').addEventListener('click', () => {
+            if (enteredPin.length > 0) {
+                enteredPin = enteredPin.slice(0, -1);
+                updatePinDisplay();
+                pinError.classList.add('opacity-0');
+            }
+        });
+
+        const INITIAL_PRODUCTS = [
+            { name: "פאל מאל כחול קצר", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל כחול ארוך", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל כחול קצר פילטר", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל כחול ארוך פילטר", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל אדום קצר", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל אדום ארוך", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל דמי בלו", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל דמי סילבר", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל סלים כחול", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל סלים סגול", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל דמי מנטה", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל דמי בלוברי", cat: "cat-pallmall", avg: "", isActive: true }, { name: "פאל מאל דמי ברי", cat: "cat-pallmall", avg: "", isActive: true },
+            { name: "ווינסטון כחול קצר", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון כחול ארוך", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון קוד", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון אקווה", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון אקווה ארוך", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון קומפקט ברי", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון קומפקט בלו", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון סלים כחול", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון סלים מנטה", cat: "cat-winston", avg: "", isActive: true }, { name: "ווינסטון קומפקט קוד", cat: "cat-winston", avg: "", isActive: true },
+            { name: "אל די כחול קצר", cat: "cat-ld", avg: "", isActive: true }, { name: "אל די כחול ארוך", cat: "cat-ld", avg: "", isActive: true }, { name: "אל די אדום", cat: "cat-ld", avg: "", isActive: true }, { name: "אל די סלים כחול", cat: "cat-ld", avg: "", isActive: true }, { name: "אל די סלים סגול", cat: "cat-ld", avg: "", isActive: true },
+            { name: "כאמל צהוב", cat: "cat-camel", avg: "", isActive: true }, { name: "כאמל כחול", cat: "cat-camel", avg: "", isActive: true }, { name: "כאמל ארוך", cat: "cat-camel", avg: "", isActive: true }, { name: "כאמל קומפקט בלו", cat: "cat-camel", avg: "", isActive: true }, { name: "כאמל קומפקט", cat: "cat-camel", avg: "", isActive: true },
+            { name: "קנט ארוך", cat: "cat-kent", avg: "", isActive: true }, { name: "קנט קצר", cat: "cat-kent", avg: "", isActive: true },
+            { name: "ווג כחול", cat: "cat-vogue", avg: "", isActive: true }, { name: "ווג סגול", cat: "cat-vogue", avg: "", isActive: true }, { name: "ווג מנטה", cat: "cat-vogue", avg: "", isActive: true },
+            { name: "פאל מאל כחול טבק", cat: "cat-tobacco", avg: "", isActive: true }, { name: "גולדן ורגיניה לבן", cat: "cat-tobacco", avg: "", isActive: true }, { name: "גולדן ורגינייה ירוק", cat: "cat-tobacco", avg: "", isActive: true }, { name: "טבק ווינסטון לייט", cat: "cat-tobacco", avg: "", isActive: true }
+        ];
+
+        const CATEGORY_MAP = { 
+            "cat-pallmall": "פאל מאל", "cat-winston": "ווינסטון", "cat-ld": "אל די", "cat-camel": "כאמל", "cat-kent": "קנט", "cat-vogue": "ווג", "cat-tobacco": "טאבקים", "cat-general": "כללי" 
+        };
+
+        const POS_ALIASES_MAP = {
+            "פאל מאל כחול קצר": ["פאל מאל כחול קצר", "פאלמאל כחול", "פל מל כחול"],
+            "פאל מאל כחול ארוך": ["פאל מאל כחול ארוך", "פאלמאל כחול ארוך", "פל מל כחול ארוך"],
+            "ווינסטון כחול קצר": ["ווינסטון כחול קצר", "וינסטון כחול"],
+            "ווינסטון כחול ארוך": ["ווינסטון כחול ארוך", "וינסטון כחול ארוך"],
+            "כאמל צהוב": ["כאמל צהוב", "קאמל צהוב"],
+            "כאמל כחול": ["כאמל כחול", "קאמל כחול"],
+            "אל די כחול קצר": ["אל די כחול", "LD כחול"],
+            "קנט ארוך": ["קנט ארוך"],
+            "ווג כחול": ["ווג כחול"],
+            "גולדן ורגינייה ירוק": ["גולדן ורגיניה ירוק", "גולדן ורגניה ירוק", "טבק גולדן ירוק"]
+        };
+
+        window.APP_STATE = { products: [], categories: {}, contacts: [{ name: "סוכן גלוברנס", phone: "" }], orderHistory: [], snapshots: [], manualAdjustments: {}, searchQuery: '', agentPhone: '', isEditMode: false, doubleOrderMode: false, customerNumber: '', categoryEmptyShelf: {} };
+        let dbRef = null; let saveTimeout = null; let isReceivingCloudData = false; let currentRawMessage = ''; let editingOrderIdx = -1; let unscribeFirebase = null; let authUser = null; let isOnline = navigator.onLine; window.tempSalesData = null; window.tempShortagesData = {};
+        
+        let currentScannerMode = 'excel'; 
+        let currentMissingScannerMode = 'excel'; 
+
+        function isAnyModalOpen() { const modals = ['customModal', 'orderEditModal', 'manualPullsModal', 'baselineModal', 'posUploadModal', 'posReviewModal', 'salesModal', 'missingResultModal', 'stockHistoryModal', 'pdfPreviewModal', 'historyModal']; return modals.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); }); }
+
+        async function init() {
+            let localData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
+            
+            if (localData) {
+                window.APP_STATE.categories = localData.categories || JSON.parse(JSON.stringify(CATEGORY_MAP));
+                window.APP_STATE.products = localData.products || [];
+                window.APP_STATE.products.forEach(p => { 
+                    if (p.categoryClass === 'cat-tobacco') p.unitType = 'פאקטים'; 
+                    if (p.isActive === undefined) p.isActive = true; 
+                    if (p.unitsPerPack === undefined) p.unitsPerPack = (p.categoryClass === 'cat-tobacco' ? 5 : 10);
+                });
+                window.APP_STATE.contacts = localData.contacts || []; window.APP_STATE.orderHistory = localData.orderHistory || []; window.APP_STATE.snapshots = localData.snapshots || []; window.APP_STATE.manualAdjustments = localData.manualAdjustments || {}; window.APP_STATE.agentPhone = localData.agentPhone || '';
+                window.APP_STATE.customerNumber = localData.customerNumber || '';
+                window.APP_STATE.categoryEmptyShelf = localData.categoryEmptyShelf || {};
+            } else {
+                window.APP_STATE.categories = JSON.parse(JSON.stringify(CATEGORY_MAP));
+                window.APP_STATE.products = INITIAL_PRODUCTS.map(p => ({ id: `prod_${Math.random().toString(36).substr(2, 9)}`, name: p.name, quantity: '', stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: p.cat, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (p.cat === 'cat-tobacco' ? 5 : 10) }));
+                window.APP_STATE.customerNumber = ''; 
+                window.APP_STATE.categoryEmptyShelf = {};
+            }
+            
+            document.getElementById('agentPhone').value = window.APP_STATE.agentPhone; 
+            document.getElementById('customerNumberInput').value = window.APP_STATE.customerNumber; 
+
+            renderGrid(); renderContacts(); setupEventListeners(); initFirebase();
+            window.addEventListener('online', () => { isOnline = true; if(authUser) { setSyncStatus("מתחבר מחדש...", "bg-yellow-400", true); attemptReconnect(); } });
+            window.addEventListener('offline', () => { isOnline = false; setSyncStatus("מנותק (ממתין לרשת)", "bg-slate-400", false); });
+            setInterval(() => { if(isOnline && authUser && (!unscribeFirebase || document.getElementById('sync-status').innerText.includes('מנותק'))) attemptReconnect(); }, 10000);
+        }
+
+        async function initFirebase() {
+            try {
+                // המפתחות שלך ל-Firebase:
+                const firebaseConfig = {
+                    apiKey: "AIzaSyAqn42tE-akkqrKBH8v2jjOFgRRoiKyW2s",
+                    authDomain: "globrands-db.firebaseapp.com",
+                    projectId: "globrands-db",
+                    storageBucket: "globrands-db.firebasestorage.app",
+                    messagingSenderId: "1027802658989",
+                    appId: "1:1027802658989:web:6a74fd0926b1199e776e24",
+                    measurementId: "G-7X8HTPPW0J"
+                };
+
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+                
+                dbRef = doc(db, 'globrands_inventory', FIREBASE_DOC_ID);
+                
+                const initAuth = async () => {
+                    try { await signInAnonymously(auth); } catch (err) { console.error(err); setSyncStatus("שגיאת אימות בענן", "bg-red-500"); }
+                };
+                
+                await initAuth();
+                
+                onAuthStateChanged(auth, user => { authUser = user; if (user && isOnline) startFirebaseListener(); });
+            } catch (e) { console.error(e); setSyncStatus("שגיאת תצורת ענן", "bg-red-500"); }
+        }
+        
+        function attemptReconnect() { if (authUser && isOnline) { startFirebaseListener(); debouncedSave(); } }
+
+        function startFirebaseListener() {
+            if (!authUser || !dbRef || !isOnline) return;
+            if(unscribeFirebase) { unscribeFirebase(); unscribeFirebase = null; }
+            setSyncStatus("מתחבר לענן...", "bg-yellow-500", true);
+            unscribeFirebase = onSnapshot(dbRef, (snap) => {
+                try {
+                    if (snap.exists() && !window.APP_STATE.isEditMode) {
+                        isReceivingCloudData = true; const data = snap.data();
+                        window.APP_STATE.categories = data.categories || window.APP_STATE.categories;
+                        window.APP_STATE.products = data.products || window.APP_STATE.products; window.APP_STATE.contacts = data.contacts || window.APP_STATE.contacts; window.APP_STATE.orderHistory = data.orderHistory || window.APP_STATE.orderHistory; window.APP_STATE.snapshots = data.snapshots || window.APP_STATE.snapshots || []; window.APP_STATE.manualAdjustments = data.manualAdjustments || window.APP_STATE.manualAdjustments || {};
+                        window.APP_STATE.customerNumber = data.customerNumber || window.APP_STATE.customerNumber; 
+                        window.APP_STATE.categoryEmptyShelf = data.categoryEmptyShelf || window.APP_STATE.categoryEmptyShelf || {};
+                        
+                        if(document.activeElement && document.activeElement.id !== 'agentPhone') { window.APP_STATE.agentPhone = data.agentPhone || ''; document.getElementById('agentPhone').value = window.APP_STATE.agentPhone; }
+                        if(document.activeElement && document.activeElement.id !== 'customerNumberInput') { document.getElementById('customerNumberInput').value = window.APP_STATE.customerNumber; } 
+                        
+                        if (!isAnyModalOpen()) renderGrid();
+                        renderContacts(); isReceivingCloudData = false; setSyncStatus("מחובר אונליין", "bg-green-500", false);
+                    } else if (!snap.exists()) { setSyncStatus("מחובר אונליין", "bg-green-500", false); debouncedSave(); }
+                } catch (err) { isReceivingCloudData = false; }
+            }, (error) => { setSyncStatus("מנותק (מנסה לחזור...)", "bg-slate-400", false); unscribeFirebase = null; });
+        }
+
+        function debouncedSave() {
+            if (isReceivingCloudData) return; clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                const clean = { agentPhone: window.APP_STATE.agentPhone, products: window.APP_STATE.products, contacts: window.APP_STATE.contacts, orderHistory: window.APP_STATE.orderHistory, snapshots: window.APP_STATE.snapshots, manualAdjustments: window.APP_STATE.manualAdjustments, categories: window.APP_STATE.categories, customerNumber: window.APP_STATE.customerNumber, categoryEmptyShelf: window.APP_STATE.categoryEmptyShelf || {} };
+                const safeDataForCloud = JSON.parse(JSON.stringify(clean)); 
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clean));
+                if (dbRef && isOnline) { try { await setDoc(dbRef, safeDataForCloud); } catch(e) { setSyncStatus("מנותק (שמירה לא עברה)", "bg-slate-400", false); } }
+            }, 600);
+        }
+
+        function recalcProduct(p, isDouble = false) {
+            if (p.isActive === false) { p.quantity = ''; return; }
+            let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+            let avgPacks = parseInt(p.shelfAvg) || 0;
+            let stockC = parseInt(p.stockC); let shelfU = parseInt(p.shelfU);
+            if (isNaN(stockC) && isNaN(shelfU)) { p.quantity = ''; return; }
+            let currentStockUnits = ((isNaN(stockC) ? 0 : stockC) * unitsPerPack) + (isNaN(shelfU) ? 0 : shelfU);
+            let finalOrder = 0;
+
+            let hasCustomThreshold = window.APP_STATE.categoryEmptyShelf && window.APP_STATE.categoryEmptyShelf[p.categoryClass] !== undefined && window.APP_STATE.categoryEmptyShelf[p.categoryClass] !== '';
+            let thresholdValue = hasCustomThreshold ? parseInt(window.APP_STATE.categoryEmptyShelf[p.categoryClass]) : 0;
+
+            if (avgPacks === 0) {
+                if (hasCustomThreshold) {
+                    if (currentStockUnits <= thresholdValue) { finalOrder = isDouble ? 2 : 1; p.unitType = 'פאקטים'; p.quantity = finalOrder; } else { p.quantity = ''; } return;
+                } else {
+                    if (currentStockUnits <= 4) { finalOrder = isDouble ? 2 : 1; p.unitType = 'פאקטים'; p.quantity = finalOrder; } else { p.quantity = ''; } return;
+                }
+            }
+
+            if (p.categoryClass === 'cat-tobacco') {
+                if (hasCustomThreshold) {
+                    let targetUnits = (avgPacks * unitsPerPack) + thresholdValue;
+                    if (isDouble) targetUnits = (avgPacks * unitsPerPack * 2) + thresholdValue;
+                    let requiredUnits = targetUnits - currentStockUnits;
+                    finalOrder = requiredUnits > 0 ? Math.ceil(requiredUnits / unitsPerPack) : 0;
+                    if (isDouble && finalOrder > 0) finalOrder = Math.round(finalOrder * 0.8);
+                    p.unitType = 'פאקטים'; p.quantity = finalOrder > 0 ? finalOrder : '';
+                } else {
+                    let targetPacks = Math.round(avgPacks * 1.1); if (isDouble) targetPacks = targetPacks * 2; let modifier = 0;
+                    if (currentStockUnits <= 2) modifier = 1; else if (currentStockUnits <= 6) modifier = 0; else if (currentStockUnits <= 11) modifier = -1; else if (currentStockUnits <= 16) modifier = -2; else modifier = -Math.ceil((currentStockUnits - 6) / 5); 
+                    finalOrder = targetPacks + modifier; finalOrder = (finalOrder > 0 && targetPacks > 0) ? finalOrder : 0;
+                    if (isDouble && finalOrder > 0) finalOrder = Math.round(finalOrder * 0.8);
+                    p.unitType = 'פאקטים'; p.quantity = finalOrder > 0 ? finalOrder : '';
+                }
+            } else {
+                if (hasCustomThreshold) {
+                    let targetUnits = (avgPacks * unitsPerPack) + thresholdValue;
+                    if (isDouble) targetUnits = (avgPacks * unitsPerPack * 2) + thresholdValue;
+                    let requiredUnits = targetUnits - currentStockUnits;
+                    if (requiredUnits > 0) finalOrder = p.unitType === 'פאקטים' ? Math.ceil(requiredUnits / unitsPerPack) : requiredUnits;
+                    if (isDouble && finalOrder > 0) finalOrder = Math.round(finalOrder * 0.8);
+                    p.quantity = finalOrder > 0 ? finalOrder : '';
+                } else {
+                    let targetUnits = Math.round((avgPacks * unitsPerPack) * 1.1); if (isDouble) targetUnits = targetUnits * 2; let requiredUnits = targetUnits - currentStockUnits;
+                    if (requiredUnits > 0) finalOrder = p.unitType === 'פאקטים' ? Math.ceil(requiredUnits / unitsPerPack) : requiredUnits;
+                    if (isDouble && finalOrder > 0) finalOrder = Math.round(finalOrder * 0.8);
+                    p.quantity = finalOrder > 0 ? finalOrder : '';
+                }
+            }
+        }
+
+        function formatUnitsStringExplicit(units, unitsPerPack) {
+            let isNegative = units < 0; let absUnits = Math.abs(units);
+            let packs = Math.floor(absUnits / unitsPerPack); let singles = absUnits % unitsPerPack;
+            let res = packs + " פאקטים ו-" + singles + " יחידות"; return isNegative ? "(עודף) " + res : res;
+        }
+
+        function formatUnitsStringShort(units, unitsPerPack) {
+            let isNegative = units < 0; let absUnits = Math.abs(units); let packs = Math.floor(absUnits / unitsPerPack); let singles = absUnits % unitsPerPack; let res = '';
+            if (packs > 0 && singles > 0) res = `${packs} פאק' ו-${singles} יח'`; else if (packs > 0) res = `${packs} פאק'`; else res = `${singles} יח'`;
+            return isNegative ? "+" + res + " (עודף)" : res;
+        }
+
+        function renderContacts() {
+            const quickList = document.getElementById('contactsQuickList'); const managerList = document.getElementById('contactsManagerList');
+            quickList.innerHTML = window.APP_STATE.contacts.map(c => `<button type="button" class="contact-btn shrink-0 bg-slate-100 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-full text-xs font-bold ${window.APP_STATE.agentPhone === c.phone ? 'bg-blue-800 text-white' : ''}" data-phone="${c.phone}">${c.name}</button>`).join('');
+            managerList.innerHTML = window.APP_STATE.contacts.map((c, i) => `<div class="bg-white border border-slate-200 rounded px-2 py-1 flex items-center gap-2 text-xs font-bold shadow-sm"><span class="text-slate-800">${c.name}</span><span class="text-slate-400 text-[10px]">${c.phone}</span><button type="button" class="delete-contact-btn text-slate-400 hover:text-red-600 ml-1" data-index="${i}"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyListContainer');
+            if(!window.APP_STATE.orderHistory || window.APP_STATE.orderHistory.length === 0) { container.innerHTML = `<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-clipboard-list text-3xl mb-2"></i><br>אין עדיין היסטוריית הזמנות</div>`; return; }
+            container.innerHTML = window.APP_STATE.orderHistory.slice().reverse().map((order, reversedIdx) => {
+                let actualIdx = window.APP_STATE.orderHistory.length - 1 - reversedIdx; let isDoubleLabel = order.isDouble ? '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 text-[10px] ml-2">כפולה</span>' : '';
+                return `<div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden"><div class="flex items-center bg-slate-50 border-b border-slate-100 pr-1"><button class="history-toggle-btn flex-1 text-right p-3 hover:bg-slate-100 transition-colors" data-idx="${actualIdx}"><span class="font-bold text-sm text-slate-700 flex justify-between items-center w-full"><span><i class="fa-regular fa-calendar text-slate-400 mr-1 ml-2"></i>${order.date} ${isDoubleLabel}</span><i class="fa-solid fa-chevron-down text-slate-400"></i></span></button><div class="flex items-center ml-2"><button class="view-stock-btn text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ml-1" data-idx="${actualIdx}"><i class="fa-solid fa-box"></i> מלאי</button><button class="edit-order-btn text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm" data-idx="${actualIdx}"><i class="fa-solid fa-pen"></i> ערוך</button></div></div><div class="history-content hidden p-3 bg-slate-50 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed" id="history-content-${actualIdx}">${order.message}</div></div>`;
+            }).join('');
+        }
+
+        window.openEditOrder = function(idx) {
+            editingOrderIdx = idx; let order = window.APP_STATE.orderHistory[idx]; document.getElementById('editOrderDateStr').innerText = order.date;
+            let parsed = {}; order.message.split('\n').forEach(l => { if(l.includes(':') && !l.includes('לקוח')) { let parts = l.split(':'); parsed[parts[0].trim()] = parseInt(parts[1].trim()); } });
+            document.getElementById('orderEditListContainer').innerHTML = window.APP_STATE.products.map(p => {
+                let val = parsed[p.name] !== undefined ? parsed[p.name] : 0; let isFilled = val > 0;
+                return `<div class="flex justify-between items-center p-2 mb-1 border-b border-slate-200 bg-white rounded product-edit-item" data-name="${p.name}"><span class="text-sm font-semibold text-slate-700">${p.name}</span><div class="flex items-center gap-2"><span class="text-[10px] text-slate-400">${p.unitType}</span><input type="number" min="0" value="${val}" data-pid="${p.id}" class="w-16 p-1.5 text-center font-bold border rounded-md outline-none focus:border-blue-500 focus:ring-1 bg-slate-50 ${isFilled ? 'text-blue-700 border-blue-300' : 'text-slate-400 border-slate-200'}"></div></div>`;
+            }).join(''); document.getElementById('orderEditModal').classList.remove('hidden');
+        };
+
+        window.saveOrderEdit = function() {
+            if(editingOrderIdx < 0) return; let order = window.APP_STATE.orderHistory[editingOrderIdx];
+            let newOrderMap = {}; 
+            let currentCustNum = window.APP_STATE.customerNumber || '';
+            let newMsg = `מספר לקוח : ${currentCustNum}\n*הזמנת גלוברנס:*\n\n`; 
+            let grouped = {};
+            document.querySelectorAll('#orderEditListContainer input').forEach(inp => { let val = parseInt(inp.value) || 0; let pid = inp.dataset.pid; let p = window.APP_STATE.products.find(x => x.id === pid); if(val > 0) { newOrderMap[pid] = val; const cat = window.APP_STATE.categories[p.categoryClass] || 'כללי'; if(!grouped[cat]) grouped[cat] = []; grouped[cat].push({name: p.name, qty: val, unit: p.unitType}); } });
+            for(const [cat, items] of Object.entries(grouped)) { newMsg += `*${cat}*\n~~~~~~~~~~~~~~~~\n` + items.map(i => `${i.name}: ${i.qty}`).join('\n\n~~~~~~~~~~~~~~~~\n') + '\n\n'; }
+            order.message = newMsg.trim();
+            if (order.snapshotId) { let snap = window.APP_STATE.snapshots.find(s => s.id === order.snapshotId); if (snap) { window.APP_STATE.products.forEach(p => { let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)); let orderedUnits = p.unitType === 'פאקטים' ? (newOrderMap[p.id] || 0) * unitsPerPack : (newOrderMap[p.id] || 0); let before = snap.stocksBefore ? snap.stocksBefore[p.id] : (snap.stocks[p.id] || 0); snap.stocks[p.id] = before + orderedUnits; }); } }
+            
+            window.APP_STATE.products.forEach(p => {
+                let H = window.APP_STATE.orderHistory.length; 
+                const getQty = (idx, pName) => { 
+                    if (idx < 0 || idx >= H) return 0; let qty = 0; 
+                    window.APP_STATE.orderHistory[idx].message.split('\n').forEach(l => { 
+                        if(l.includes(':') && !l.includes('לקוח')){ 
+                            let parts = l.split(':'); if(parts[0].trim()===pName) qty = parseInt(parts[1].trim()); 
+                        }
+                    }); 
+                    return qty; 
+                };
+
+                if (editingOrderIdx >= H - 3) { 
+                    let recent = [];
+                    for(let i=3; i>=1; i--){
+                        let idx = H - i;
+                        if(idx >= 0 && !window.APP_STATE.orderHistory[idx].isDouble){
+                            recent.push(getQty(idx, p.name));
+                        }
+                    }
+
+                    if (recent.length > 0) {
+                        let currentAvg = parseInt(p.shelfAvg) || 0;
+                        let sum = recent.reduce((a,b)=>a+b, 0);
+                        
+                        if (currentAvg === 0) {
+                            if (recent.length >= 2 && recent[recent.length-1] > 0 && recent[recent.length-2] > 0) { 
+                                p.shelfAvg = "1"; p.skippedOrders = 0; p.history = []; 
+                            }
+                        } else if (currentAvg === 1) {
+                            if (recent.length >= 3 && recent[0]===0 && recent[1]===0 && recent[2]===0) { 
+                                p.shelfAvg = "0"; p.skippedOrders = 3; p.history = []; 
+                            } else if (recent.length >= 3) { 
+                                let newAvg = Math.round((sum / recent.length) * 1.1); 
+                                p.shelfAvg = newAvg < 1 ? "1" : newAvg.toString(); 
+                            }
+                        } else {
+                            if (recent.length >= 3) { 
+                                let newAvg = Math.round((sum / recent.length) * 1.1); 
+                                p.shelfAvg = newAvg < 1 ? "1" : newAvg.toString(); 
+                            }
+                        }
+                    }
+                }
+            });
+            renderGrid(); debouncedSave(); renderHistory(); document.getElementById('orderEditModal').classList.add('hidden'); modalObj.show({ title: "עודכן", message: "עודכן בהצלחה.", icon: "fa-solid fa-check text-green-500", showCancel: false });
+        };
+
+        window.openViewStock = function(idx) {
+            let order = window.APP_STATE.orderHistory[idx]; if (!order.snapshotId) { modalObj.show({title: "שגיאה", message: "אין ספירה להזמנה זו.", showCancel: false}); return; }
+            let snap = window.APP_STATE.snapshots.find(s => s.id === order.snapshotId); if (!snap || !snap.stocksBefore) { modalObj.show({title: "שגיאה", message: "נתוני מלאי אינם זמינים.", showCancel: false}); return; }
+            document.getElementById('stockHistoryDateStr').innerText = order.date; let html = '';
+            window.APP_STATE.products.forEach(p => { let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)); let stockUnits = snap.stocksBefore[p.id]; if (stockUnits !== undefined && stockUnits !== null) { html += `<div class="flex justify-between items-center p-2 mb-1 border-b border-slate-200 bg-white rounded"><span class="text-sm font-semibold text-slate-700">${p.name}</span><span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 shadow-sm" dir="ltr">${formatUnitsStringShort(stockUnits, unitsPerPack)}</span></div>`; } });
+            document.getElementById('stockHistoryListContainer').innerHTML = html || `<div class="text-center text-slate-500 py-6">לא הוזן מלאי.</div>`; document.getElementById('stockHistoryModal').classList.remove('hidden');
+        };
+
+        window.openBaselineModal = function() {
+            const container = document.getElementById('baselineListContainer');
+            let lastSnap = null; if (window.APP_STATE.snapshots && window.APP_STATE.snapshots.length > 0) lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
+            container.innerHTML = window.APP_STATE.products.map(p => {
+                let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)); let pastPacks = ''; let pastUnits = '';
+                if (lastSnap && lastSnap.stocks[p.id] !== undefined) { let totalPast = lastSnap.stocks[p.id]; if (totalPast > 0) { pastPacks = Math.floor(totalPast / unitsPerPack); pastUnits = totalPast % unitsPerPack; } }
+                return `<div class="flex justify-between items-center p-2 mb-1 border-b border-slate-200 bg-white rounded baseline-item" data-name="${p.name}"><span class="text-sm font-semibold text-slate-700">${p.name}</span><div class="flex items-center gap-2"><div class="flex flex-col items-center"><span class="text-[9px] text-slate-400">פאקטים</span><input type="number" min="0" data-type="packs" data-pid="${p.id}" value="${pastPacks}" class="w-14 p-1.5 text-center font-bold border rounded-md outline-none focus:border-blue-500 bg-slate-50 text-blue-800"></div><div class="flex flex-col items-center"><span class="text-[9px] text-slate-400">יחידות</span><input type="number" min="0" data-type="units" data-pid="${p.id}" value="${pastUnits}" class="w-14 p-1.5 text-center font-bold border rounded-md outline-none focus:border-blue-500 bg-slate-50 text-blue-800"></div></div></div>`;
+            }).join('');
+            document.getElementById('baselineModal').classList.remove('hidden');
+        };
+
+        window.saveBaselineData = function() {
+            let snapId = Date.now(); let currentStocks = {}; let hasInput = false;
+            document.querySelectorAll('.baseline-item').forEach(item => { let pid = item.querySelector('input[data-type="packs"]').dataset.pid; let packs = parseInt(item.querySelector('input[data-type="packs"]').value) || 0; let units = parseInt(item.querySelector('input[data-type="units"]').value) || 0; if (packs > 0 || units > 0) hasInput = true; let p = window.APP_STATE.products.find(x => x.id === pid); let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)); currentStocks[pid] = (packs * unitsPerPack) + units; });
+            if(!hasInput) { alert("לא הוזן אף מלאי. אנא הזן כמויות לפני השמירה."); return; }
+            const nowSnap = new Date(); const dateStrSnap = nowSnap.toLocaleDateString('he-IL') + ' ' + nowSnap.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+            window.APP_STATE.snapshots.push({ id: snapId, date: dateStrSnap, stocksBefore: currentStocks, stocks: currentStocks, actionLabel: "עדכון מלאי אחרון (מהתיקייה)" });
+            if(window.APP_STATE.snapshots.length > 50) window.APP_STATE.snapshots.shift(); 
+            document.getElementById('baselineModal').classList.add('hidden'); debouncedSave();
+            modalObj.show({title:"המלאי נשמר", message:"המלאי העדכני אחרון עודכן ונשמר במערכת וישמש כבסיס לחישובים הבאים.\nהמסך הראשי נשאר נקי להזמנה הבאה.", icon:"fa-solid fa-check text-green-500 text-2xl", showCancel:false});
+        };
+
+        window.openManualPulls = function() {
+            const container = document.getElementById('pullsListContainer');
+            container.innerHTML = window.APP_STATE.products.map(p => { let val = window.APP_STATE.manualAdjustments[p.id] || 0; let isFilled = val > 0; return `<div class="flex justify-between items-center p-2 mb-1 border-b border-slate-200 bg-white rounded pulls-item" data-name="${p.name}"><span class="text-sm font-semibold text-slate-700">${p.name}</span><div class="flex items-center gap-2"><span class="text-[10px] text-slate-400">יח'</span><input type="number" min="0" value="${val}" data-pid="${p.id}" class="w-16 p-1.5 text-center font-bold border rounded-md outline-none focus:border-orange-500 focus:ring-1 bg-slate-50 ${isFilled ? 'text-orange-700 border-orange-300' : 'text-slate-400 border-slate-200'}"></div></div>`; }).join('');
+            document.getElementById('manualPullsModal').classList.remove('hidden');
+        };
+
+        window.saveManualPulls = function() {
+            document.querySelectorAll('#pullsListContainer input').forEach(inp => { let val = parseInt(inp.value) || 0; if(val > 0) window.APP_STATE.manualAdjustments[inp.dataset.pid] = val; else delete window.APP_STATE.manualAdjustments[inp.dataset.pid]; });
+            debouncedSave(); document.getElementById('manualPullsModal').classList.add('hidden'); modalObj.show({ title: "נשמר", message: "המשיכות נשמרו ויחושבו בקליטת הדוח הבאה.", icon: "fa-solid fa-check text-green-500", showCancel: false });
+        };
+
+
+        // --- SHARED EXCEL PARSER ---
+        async function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                        
+                        let nameCol = -1;
+                        let qtyCol = -1;
+
+                        for (let r = 0; r < Math.min(15, json.length); r++) {
+                            let row = json[r];
+                            if (!row) continue;
+                            
+                            for (let c = 0; c < row.length; c++) {
+                                let cellVal = String(row[c] || '').trim();
+                                if (!cellVal) continue;
+                                
+                                if (cellVal === 'שם' || cellVal.includes('שם מוצר') || cellVal === 'תיאור' || cellVal.includes('פריט')) {
+                                    nameCol = c;
+                                }
+                                if (cellVal === 'כמות' || cellVal.includes('מכר') || cellVal.includes('נמכר') || cellVal === 'יח' || cellVal === 'יחידות') {
+                                    qtyCol = c;
+                                }
+                            }
+                            if (nameCol !== -1 && qtyCol !== -1) break;
+                        }
+
+                        if (nameCol === -1 || qtyCol === -1) {
+                            reject(new Error("המערכת לא הצליחה לזהות אוטומטית את עמודות ה'שם' וה'כמות' בקובץ. ודא שהקובץ תקין."));
+                            return;
+                        }
+
+                        let results = {};
+
+                        for (let r = 0; r < json.length; r++) {
+                            let row = json[r];
+                            if (!row) continue;
+
+                            let rawName = String(row[nameCol] || '').trim();
+                            let rawQty = parseFloat(row[qtyCol]);
+
+                            if (!rawName || isNaN(rawQty) || rawQty <= 0) continue;
+                            if (rawName.includes('סה"כ') || rawName.includes('סהכ') || rawName.includes('סיכום')) continue;
+
+                            let matchedProdId = null;
+                            let multiplier = 1;
+
+                            let exactMatch = window.APP_STATE.products.find(p => p.name === rawName);
+                            if (exactMatch) {
+                                matchedProdId = exactMatch.id;
+                            } else {
+                                let searchTerms = [];
+                                window.APP_STATE.products.forEach(p => {
+                                    let aliases = POS_ALIASES_MAP[p.name] || [p.name];
+                                    aliases.forEach(alias => {
+                                        let cleanAlias = alias.replace(/[^\u0590-\u05FF0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+                                        if(cleanAlias) {
+                                            searchTerms.push({ term: cleanAlias, base: p.id });
+                                        }
+                                    });
+                                });
+                                
+                                searchTerms.sort((a, b) => {
+                                    let aWords = a.term.split(/\s+/).length;
+                                    let bWords = b.term.split(/\s+/).length;
+                                    if (aWords === bWords) return b.term.length - a.term.length;
+                                    return bWords - aWords;
+                                });
+
+                                let cleanRawName = " " + rawName.replace(/[^\u0590-\u05FF0-9\s]/g, ' ').replace(/\s+/g, ' ').trim() + " ";
+                                for (let i = 0; i < searchTerms.length; i++) {
+                                    if (cleanRawName.includes(" " + searchTerms[i].term + " ")) {
+                                        matchedProdId = searchTerms[i].base;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (matchedProdId) {
+                                let p = window.APP_STATE.products.find(x => x.id === matchedProdId);
+                                if (rawName.includes("פאקט") || rawName.includes("פקט") || rawName.includes("אדג פאקט")) {
+                                    multiplier = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                                }
+                                
+                                if (!results[matchedProdId]) results[matchedProdId] = 0;
+                                results[matchedProdId] += (rawQty * multiplier);
+                            }
+                        }
+                        resolve(results);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+
+        // --- SCANNER LOGIC (POS) ---
+
+        window.openPosUpload = function() {
+            if (!window.APP_STATE.snapshots || window.APP_STATE.snapshots.length === 0) { modalObj.show({title: "אין מלאי קודם", message: "המערכת ריקה. יש לבצע לפחות עדכון מלאי אחד לפני שניתן לקלוט דוח.\nלחץ על כפתור 'מלאי עדכני אחרון' כדי להתחיל.", showCancel: false}); return; }
+            let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1]; document.getElementById('lastSnapshotTimeDisplay').innerText = lastSnap.date;
+            document.getElementById('posImageInput').value = ''; 
+            document.getElementById('excelImageInput').value = ''; 
+            document.getElementById('aiLoadingOverlayPos').classList.add('hidden'); 
+            document.getElementById('posUploadModal').classList.remove('hidden');
+        };
+
+        window.processExcelFile = async function() {
+            const fileInput = document.getElementById('excelImageInput');
+            if (!fileInput.files || fileInput.files.length === 0) { alert("אנא בחר קובץ אקסל או CSV של הדוח."); return; }
+
+            const file = fileInput.files[0];
+            const overlay = document.getElementById('aiLoadingOverlayPos');
+            overlay.classList.remove('hidden');
+            window.currentUploadedFileURL = null; 
+            document.getElementById('aiLoadingTextPos').innerHTML = "קורא קובץ אקסל...<br><span class='text-xs font-normal'>מחפש עמודות אוטומטית ומתאים שמות מוצרים</span>";
+
+            try {
+                let results = await readExcelFile(file);
+                overlay.classList.add('hidden');
+                showReviewModal(results);
+            } catch (error) {
+                console.error("Excel Parsing Error:", error);
+                overlay.classList.add('hidden');
+                alert(error.message || "אירעה שגיאה בקריאת הקובץ. אנא ודא שזהו קובץ אקסל תקין.");
+            }
+        };
+
+        // --- PDF SCANNING LOGIC ---
+        async function extractTextFromPDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                
+                let lastY = -1;
+                let pageText = '';
+                textContent.items.forEach(item => {
+                    if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 8) {
+                        pageText += '\n';
+                    }
+                    pageText += item.str + ' ';
+                    lastY = item.transform[5];
+                });
+                
+                fullText += pageText + '\n';
+            }
+            return fullText;
+        }
+
+        function parsePosTextStrict(rawText) {
+            let results = {};
+            let lines = rawText.split('\n');
+            
+            let searchTerms = [];
+            window.APP_STATE.products.forEach(p => {
+                let aliases = POS_ALIASES_MAP[p.name] || [p.name];
+                aliases.forEach(alias => {
+                    let cleanAlias = alias.replace(/[^\u0590-\u05FF0-9\s]/g, ' ');
+                    cleanAlias = cleanAlias.replace(/(\d+)/g, ' $1 ').replace(/\s+/g, ' ').trim();
+                    if(!cleanAlias) return;
+                    
+                    let isCartonAlias = cleanAlias.includes("פאקט") || cleanAlias.includes("פקט") || cleanAlias.includes("אדג פאקט") || cleanAlias.includes("אדגפאקט");
+                    let mult = isCartonAlias ? (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)) : 1;
+                    
+                    searchTerms.push({ term: cleanAlias, base: p.id, mult: mult });
+                    if(!isCartonAlias) { 
+                         searchTerms.push({ term: cleanAlias + " פאקט", base: p.id, mult: (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)) });
+                         searchTerms.push({ term: cleanAlias + " פקט", base: p.id, mult: (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)) });
+                    }
+                });
+            });
+
+            searchTerms.sort((a, b) => {
+                let aWords = a.term.split(/\s+/).length;
+                let bWords = b.term.split(/\s+/).length;
+                if (aWords === bWords) return b.term.length - a.term.length;
+                return bWords - aWords;
+            });
+
+            lines.forEach(line => {
+                let cleanLine = line;
+                cleanLine = cleanLine.replace(/\d+\s*\.\s*\d+/g, ' '); 
+                cleanLine = cleanLine.replace(/\d+\s*%/g, ' '); 
+                cleanLine = cleanLine.replace(/\d+\s*[₪$]/g, ' '); 
+                cleanLine = cleanLine.replace(/[₪$]\s*\d+/g, ' '); 
+                cleanLine = cleanLine.replace(/(^|\s)\d+\s*(ג|ג'|ג"|ג״|גרם)(\s|$)/g, ' ');
+                cleanLine = cleanLine.replace(/(^|\s)(יח|יחידות|סהכ|סה"כ|כמות|מבצע|סה״כ)(\s|$)/g, ' ');
+                cleanLine = cleanLine.replace(/[^\u0590-\u05FF0-9\s]/g, ' '); 
+                cleanLine = cleanLine.replace(/([א-ת])\d+/g, '$1');
+                cleanLine = cleanLine.replace(/\d+([א-ת])/g, '$1');
+                cleanLine = cleanLine.replace(/(^|\s)(30|40)\s+(?=טבק)/g, ' '); 
+                cleanLine = cleanLine.replace(/(^|\s)\d{5,}(\s|$)/g, ' '); 
+                cleanLine = cleanLine.replace(/(\d+)/g, ' $1 '); 
+                cleanLine = " " + cleanLine.replace(/\s+/g, ' ').trim() + " ";
+
+                let matchedItem = null;
+                for (let i = 0; i < searchTerms.length; i++) {
+                    if (cleanLine.includes(" " + searchTerms[i].term + " ")) {
+                        matchedItem = searchTerms[i];
+                        break;
+                    }
+                }
+
+                if (matchedItem) {
+                    let textWithoutName = cleanLine.replace(" " + matchedItem.term + " ", " ");
+                    let numbers = textWithoutName.match(/\b\d{1,4}\b/g); 
+                    
+                    if (numbers && numbers.length > 0) {
+                        let qty = parseInt(numbers[numbers.length - 1], 10);
+                        if (qty > 0) {
+                            if (!results[matchedItem.base]) results[matchedItem.base] = 0;
+                            results[matchedItem.base] += (qty * matchedItem.mult);
+                        }
+                    }
+                }
+            });
+
+            return results;
+        }
+
+        window.processPOSFile = async function() {
+            const fileInput = document.getElementById('posImageInput');
+            if (!fileInput.files || fileInput.files.length === 0) { alert("אנא בחר קובץ PDF של הדוח."); return; }
+
+            const file = fileInput.files[0];
+            if (file.type !== 'application/pdf') { alert("חובה להעלות קובץ PDF בלבד."); return; }
+
+            const overlay = document.getElementById('aiLoadingOverlayPos');
+            overlay.classList.remove('hidden');
+            
+            window.currentUploadedFileURL = URL.createObjectURL(file);
+            window.currentUploadedFileType = file.type;
+
+            try {
+                document.getElementById('aiLoadingTextPos').innerHTML = "קורא קובץ PDF...<br><span class='text-xs font-normal'>מחבר כמויות מדוייקות למוצרים</span>";
+                await new Promise(r => setTimeout(r, 800));
+                let extractedRawText = await extractTextFromPDF(file);
+                
+                let salesDataByProduct = parsePosTextStrict(extractedRawText);
+                
+                overlay.classList.add('hidden');
+                showReviewModal(salesDataByProduct);
+
+            } catch (error) {
+                console.error("Extraction Error:", error);
+                overlay.classList.add('hidden');
+                alert("אירעה שגיאה בקריאת הקובץ. אנא נסה שוב או ודא שהקובץ תקין.");
+            }
+        };
+
+        function showReviewModal(salesDataByProduct) {
+            window.tempSalesData = salesDataByProduct; let html = '';
+            
+            window.APP_STATE.products.forEach(p => {
+                let unitsSold = salesDataByProduct[p.id] || 0;
+                if (unitsSold > 0) {
+                    let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                    
+                    html += `
+                    <div class="flex justify-between items-center p-3 mb-2 border border-slate-200 rounded-lg bg-slate-50 shadow-sm">
+                        <span class="font-bold text-slate-800 text-sm">${p.name}</span>
+                        <div class="flex flex-col items-end text-left">
+                            <span class="text-[10px] text-slate-500 mb-0.5">סה"כ ${unitsSold} יחידות בודדות</span>
+                            <span class="text-emerald-700 font-black text-sm bg-emerald-100 px-2 py-0.5 rounded shadow-sm inline-block" dir="rtl">
+                                ${formatUnitsStringExplicit(unitsSold, unitsPerPack)}
+                            </span>
+                        </div>
+                    </div>`;
+                }
+            });
+
+            if (html === '') html = '<div class="text-center p-6 text-slate-500"><i class="fa-solid fa-ghost text-4xl mb-2 text-slate-300"></i><br>לא זוהו מכירות סיגריות בקובץ. ייתכן והפורמט לא ברור או שאין מכירות.</div>';
+            document.getElementById('posReviewListContainer').innerHTML = html; document.getElementById('posUploadModal').classList.add('hidden'); document.getElementById('posReviewModal').classList.remove('hidden');
+        }
+
+        function calculateAndApplyPOS(salesDataByProduct) {
+            let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
+            let totalSoldAcrossBoard = 0;
+            
+            window.APP_STATE.products.forEach(p => {
+                let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                let soldUnits = salesDataByProduct[p.id] || 0; 
+                totalSoldAcrossBoard += soldUnits;
+                
+                let manualPulls = window.APP_STATE.manualAdjustments[p.id] || 0;
+                let totalDeducted = soldUnits + manualPulls;
+                
+                let hasBaseline = lastSnap && lastSnap.stocks[p.id] !== undefined;
+                let baselineUnits = hasBaseline ? lastSnap.stocks[p.id] : 0;
+                
+                let currentUnits = baselineUnits - totalDeducted;
+                if (currentUnits < 0) currentUnits = 0; 
+                
+                let packsToScreen = Math.floor(currentUnits / unitsPerPack);
+                let singlesToScreen = currentUnits % unitsPerPack;
+                
+                p.stockC = packsToScreen.toString(); 
+                p.shelfU = singlesToScreen.toString();
+                
+                recalcProduct(p, window.APP_STATE.doubleOrderMode); 
+            });
+
+            window.APP_STATE.manualAdjustments = {}; debouncedSave(); renderGrid(); updateBottomBar();
+            
+            let msg = `המלאי במסך התעדכן בהצלחה!\n\nהמערכת חישבה: מלאי מהפעם האחרונה פחות ${totalSoldAcrossBoard} יחידות שנמכרו בקופה.\nהתוצאה (מלאי עדכני) הוזנה אוטומטית למשבצות במסך הראשי והזמנה חושבה לפי התקן!\n\nעבור על המסך, בדוק שההזמנה תקינה ולחץ "סיום ושליחה".`;
+
+            modalObj.show({ title: "העדכון בוצע!", message: msg, icon: "fa-solid fa-wand-magic-sparkles text-emerald-500 text-2xl", showCancel: false });
+        }
+
+
+        // --- MISSING CHECK LOGIC ---
+        
+        window.openMissingCheckModal = function() {
+            if (!window.APP_STATE.snapshots || window.APP_STATE.snapshots.length === 0) { 
+                modalObj.show({title: "אין מלאי קודם", message: "לא קיים מלאי מעודכן קודם לבדוק מולו.", showCancel: false}); 
+                return; 
+            }
+            let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
+            
+            let dateParts = lastSnap.date.split(' ');
+            let dateStr = dateParts[0] || lastSnap.date;
+            let timeStr = dateParts[1] || '';
+            document.getElementById('missingCheckDatePrompt').innerText = `הכנס בבקשה דוח מכר מתאריך ${dateStr} ומשעה ${timeStr} באופן מדוייק`;
+            
+            const container = document.getElementById('missingCheckListContainer');
+            container.innerHTML = window.APP_STATE.products.map(p => {
+                return `
+                <div class="flex justify-between items-center p-2 mb-1 border-b border-slate-200 bg-white rounded missing-check-item" data-id="${p.id}">
+                    <span class="text-sm font-semibold text-slate-700">${p.name}</span>
+                    <div class="flex items-center gap-2">
+                        <div class="flex flex-col items-center">
+                            <span class="text-[9px] text-slate-400">פאקטים</span>
+                            <input type="number" min="0" data-type="packs" class="w-14 p-1.5 text-center font-bold border rounded-md outline-none focus:border-indigo-500 bg-slate-50 text-indigo-800">
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <span class="text-[9px] text-slate-400">יחידות</span>
+                            <input type="number" min="0" data-type="units" class="w-14 p-1.5 text-center font-bold border rounded-md outline-none focus:border-indigo-500 bg-slate-50 text-indigo-800">
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            
+            document.getElementById('excelMissingInput').value = '';
+            document.getElementById('pdfMissingInput').value = '';
+            document.getElementById('salesModal').classList.remove('hidden');
+        };
+
+        window.processMissingCheck = async function() {
+            let fileInput, isExcel;
+            if (currentMissingScannerMode === 'excel') {
+                fileInput = document.getElementById('excelMissingInput');
+                isExcel = true;
+            } else {
+                fileInput = document.getElementById('pdfMissingInput');
+                isExcel = false;
+            }
+
+            if (!fileInput.files || fileInput.files.length === 0) { 
+                alert("אנא בחר קובץ דוח מכר."); 
+                return; 
+            }
+            
+            const file = fileInput.files[0];
+            const overlay = document.getElementById('aiLoadingOverlay');
+            overlay.classList.remove('hidden');
+            
+            try {
+                let salesDataByProduct;
+                
+                if (isExcel) {
+                    salesDataByProduct = await readExcelFile(file);
+                } else {
+                    let extractedRawText = await extractTextFromPDF(file);
+                    salesDataByProduct = parsePosTextStrict(extractedRawText); 
+                }
+                
+                let actualStocks = {};
+                document.querySelectorAll('.missing-check-item').forEach(item => {
+                    let pid = item.dataset.id;
+                    let p = window.APP_STATE.products.find(x => x.id === pid);
+                    let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                    
+                    let packsInput = item.querySelector('input[data-type="packs"]').value;
+                    let unitsInput = item.querySelector('input[data-type="units"]').value;
+                    
+                    let packs = parseInt(packsInput) || 0;
+                    let units = parseInt(unitsInput) || 0;
+                    
+                    actualStocks[pid] = (packs * unitsPerPack) + units;
+                });
+                
+                overlay.classList.add('hidden');
+                document.getElementById('salesModal').classList.add('hidden');
+                
+                evaluateShortages(salesDataByProduct, actualStocks);
+
+            } catch (error) {
+                console.error("Extraction Error:", error);
+                overlay.classList.add('hidden');
+                alert(error.message || "אירעה שגיאה בקריאת הקובץ.");
+            }
+        };
+
+        function evaluateShortages(salesData, actualStocks) {
+            let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
+            let html = '';
+            let totalShortagesFound = 0;
+            window.tempShortagesData = {};
+            
+            window.APP_STATE.products.forEach(p => {
+                let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                let baseline = lastSnap.stocks[p.id] || 0;
+                let sold = salesData[p.id] || 0;
+                let manualPulls = window.APP_STATE.manualAdjustments[p.id] || 0;
+                
+                let expected = baseline - sold - manualPulls;
+                if (expected < 0) expected = 0; 
+                
+                let actual = actualStocks[p.id] || 0;
+                let diff = expected - actual;
+                
+                if (diff > 0) { 
+                    totalShortagesFound++;
+                    window.tempShortagesData[p.id] = diff;
+                    
+                    html += `
+                    <div class="flex justify-between items-center p-3 mb-2 border border-red-200 rounded-lg bg-white shadow-sm">
+                        <span class="font-bold text-slate-800 text-sm">${p.name}</span>
+                        <div class="flex flex-col items-end text-left">
+                            <span class="text-[10px] text-slate-500 mb-0.5">צפי: ${expected} | נספר: ${actual}</span>
+                            <span class="text-red-700 font-black text-sm bg-red-100 px-2 py-0.5 rounded shadow-sm inline-block" dir="rtl">
+                                חסר: ${formatUnitsStringExplicit(diff, unitsPerPack)}
+                            </span>
+                        </div>
+                    </div>`;
+                } else if (diff < 0) { 
+                     html += `
+                    <div class="flex justify-between items-center p-3 mb-2 border border-blue-200 rounded-lg bg-white shadow-sm opacity-70">
+                        <span class="font-bold text-slate-800 text-sm">${p.name}</span>
+                        <div class="flex flex-col items-end text-left">
+                            <span class="text-[10px] text-slate-500 mb-0.5">צפי: ${expected} | נספר: ${actual}</span>
+                            <span class="text-blue-700 font-bold text-xs bg-blue-100 px-2 py-0.5 rounded shadow-sm inline-block" dir="rtl">
+                                עודף: ${formatUnitsStringExplicit(Math.abs(diff), unitsPerPack)}
+                            </span>
+                        </div>
+                    </div>`;
+                }
+            });
+            
+            const actionArea = document.getElementById('missingResultActionArea');
+            
+            if (totalShortagesFound === 0) {
+                if (html === '') {
+                    html = '<div class="text-center p-6 text-emerald-600 font-bold"><i class="fa-solid fa-check-circle text-4xl mb-2"></i><br>המלאי מדויק לחלוטין! אין חוסרים.</div>';
+                } else {
+                    html = '<div class="text-center p-6 text-emerald-600 font-bold"><i class="fa-solid fa-check-circle text-4xl mb-2"></i><br>אין חוסרים! (נמצאו רק עודפים)</div>' + html;
+                }
+                actionArea.classList.add('hidden'); 
+            } else {
+                actionArea.classList.remove('hidden');
+            }
+            
+            document.getElementById('missingResultsList').innerHTML = html;
+            document.getElementById('missingResultModal').classList.remove('hidden');
+        }
+
+        window.confirmMissingFix = function() {
+            let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
+            let fixesApplied = 0;
+            
+            for (let pid in window.tempShortagesData) {
+                let shortage = window.tempShortagesData[pid];
+                if (lastSnap.stocks[pid] !== undefined) {
+                    lastSnap.stocks[pid] -= shortage;
+                    if (lastSnap.stocks[pid] < 0) lastSnap.stocks[pid] = 0;
+                    fixesApplied++;
+                }
+            }
+            
+            document.getElementById('missingResultModal').classList.add('hidden');
+            
+            if (fixesApplied > 0) {
+                debouncedSave();
+                modalObj.show({ 
+                    title: "תוקן בהצלחה", 
+                    message: "החוסרים הופחתו מהמלאי השמור של האפליקציה.\nכעת אם תסרוק דוח קופה רגיל לביצוע הזמנה, האפליקציה לא תפספס את החוסרים שגילית.", 
+                    icon: "fa-solid fa-check-double text-emerald-500 text-2xl", 
+                    showCancel: false 
+                });
+            }
+        };
+
+        window.delProd = (id) => { window.APP_STATE.products = window.APP_STATE.products.filter(p => p.id !== id); renderGrid(); debouncedSave(); };
+        
+        window.delCat = (catId) => {
+            modalObj.show({
+                title: "מחיקת קטגוריה",
+                message: `האם אתה בטוח שברצונך למחוק את הקטגוריה "${window.APP_STATE.categories[catId] || 'כללי'}" ואת כל המוצרים שבתוכה לצמיתות?`,
+                icon: "fa-solid fa-triangle-exclamation text-red-500 text-2xl",
+                showCancel: true,
+                confirmText: "כן, מחק הכל",
+                confirmColorClass: "bg-red-600 hover:bg-red-700",
+                onConfirm: () => {
+                    window.APP_STATE.products = window.APP_STATE.products.filter(p => p.categoryClass !== catId);
+                    delete window.APP_STATE.categories[catId];
+                    renderGrid();
+                    debouncedSave();
+                }
+            });
+        };
+
+        window.addNewCategory = () => {
+            const newId = 'cat-' + Date.now();
+            window.APP_STATE.categories[newId] = "קטגוריה חדשה";
+            renderGrid();
+            debouncedSave();
+        };
+
+        // --- GRID RENDER ---
+        function renderGrid() {
+            const grid = document.getElementById('productsGrid'); grid.innerHTML = '';
+            
+            if (window.APP_STATE.isEditMode) {
+                const cats = Object.keys(window.APP_STATE.categories);
+                cats.forEach(catId => {
+                    const catName = window.APP_STATE.categories[catId];
+                    let currentThreshold = (window.APP_STATE.categoryEmptyShelf && window.APP_STATE.categoryEmptyShelf[catId] !== undefined) ? window.APP_STATE.categoryEmptyShelf[catId] : '';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'col-span-full flex justify-between items-center bg-blue-900 text-white p-2 rounded-lg mt-4 mb-2 shadow-sm flex-wrap gap-2';
+                    header.innerHTML = `
+                        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+                            <i class="fa-solid fa-folder text-blue-300"></i>
+                            <input type="text" data-action="renameCat" data-catid="${catId}" value="${catName}" class="bg-blue-800 text-white font-bold text-sm px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-400 flex-1 border border-blue-700 min-w-[80px]">
+                            <div class="flex items-center gap-1 bg-blue-800 px-1.5 py-1 rounded border border-blue-700 whitespace-nowrap" title="סף מדף ריק (ביחידות)">
+                                <span class="text-[10px] text-blue-200">מדף ריק:</span>
+                                <input type="number" min="0" placeholder="רגיל" data-action="updateThreshold" data-catid="${catId}" value="${currentThreshold}" class="w-10 bg-transparent text-white text-xs font-bold text-center outline-none">
+                            </div>
+                        </div>
+                        <button type="button" class="text-red-400 hover:text-red-300 px-3 py-1.5 bg-blue-800 rounded transition-colors" onclick="window.delCat('${catId}')" title="מחק קטגוריה ומוצריה"><i class="fa-solid fa-trash-can"></i></button>
+                    `;
+                    grid.appendChild(header);
+
+                    const catProducts = window.APP_STATE.products.filter(p => p.categoryClass === catId);
+                    
+                    catProducts.forEach((p) => {
+                        const card = document.createElement('div'); card.id = `card-${p.id}`; 
+                        const isPredefinedCat = ['cat-pallmall', 'cat-winston', 'cat-ld', 'cat-camel', 'cat-kent', 'cat-vogue', 'cat-tobacco', 'cat-general'].includes(p.categoryClass);
+                        card.className = `product-card p-2.5 rounded-lg shadow-sm border border-solid transition-all flex flex-col justify-between relative overflow-hidden ${isPredefinedCat ? p.categoryClass : 'cat-general'}`;
+                        
+                        let currentUnitsPerPack = p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10);
+                        card.innerHTML = `<div class="flex justify-between items-center gap-2 mb-2"><input type="text" data-action="rename" data-id="${p.id}" value="${p.name}" class="font-bold text-xs bg-white/90 border rounded p-1.5 flex-1"><button type="button" onclick="window.delProd('${p.id}')" class="text-red-500 p-1 bg-red-50 rounded border border-red-100 hover:bg-red-100"><i class="fa-solid fa-trash-can"></i></button></div><div class="flex gap-1 mt-auto"><select data-action="changecat" data-id="${p.id}" class="text-[10px] flex-1 bg-white/90 border rounded p-1">${Object.entries(window.APP_STATE.categories).map(([k,v]) => `<option value="${k}" ${p.categoryClass===k?'selected':''}>${v}</option>`).join('')}</select><select data-action="changeunit" data-id="${p.id}" class="text-[10px] w-16 bg-white/90 border rounded p-1"><option value="פאקטים" ${p.unitType==='פאקטים'?'selected':''}>פאק'</option><option value="יחידות" ${p.unitType==='יחידות'?'selected':''}>יח'</option></select><div class="flex items-center gap-1 bg-white/90 border rounded p-1" title="יחידות בפקט"><i class="fa-solid fa-box-open text-[10px] text-slate-400"></i><input type="number" min="1" data-action="changeUnitsPerPack" data-id="${p.id}" value="${currentUnitsPerPack}" class="w-10 text-[10px] text-center font-bold bg-transparent outline-none"></div></div>`;
+                        grid.appendChild(card);
+                    });
+
+                    const addBtn = document.createElement('button');
+                    addBtn.className = "col-span-full py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 text-xs font-bold bg-white mb-2 hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2";
+                    addBtn.innerHTML = `<i class="fa-solid fa-plus"></i> הוסף מוצר לקטגוריית ${catName}`;
+                    addBtn.onclick = () => {
+                        let insertIdx = window.APP_STATE.products.length;
+                        for(let i = window.APP_STATE.products.length - 1; i >= 0; i--) {
+                            if(window.APP_STATE.products[i].categoryClass === catId) { insertIdx = i + 1; break; }
+                        }
+                        window.APP_STATE.products.splice(insertIdx, 0, { id: `p_${Date.now()}`, name: "", quantity: "", stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: catId, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (catId === 'cat-tobacco' ? 5 : 10) });
+                        renderGrid(); debouncedSave();
+                    };
+                    grid.appendChild(addBtn);
+                });
+
+                const addCatBtn = document.createElement('button');
+                addCatBtn.className = "col-span-full py-3.5 mt-2 mb-8 border-2 border-dashed border-blue-400 rounded-xl text-blue-600 text-sm font-bold bg-blue-50 hover:bg-blue-100 transition-colors shadow-sm flex items-center justify-center gap-2";
+                addCatBtn.innerHTML = `<i class="fa-solid fa-folder-plus text-lg"></i> הוסף קטגוריה חדשה`;
+                addCatBtn.onclick = () => window.addNewCategory();
+                grid.appendChild(addCatBtn);
+                
+                document.getElementById('totalProductsCount').innerText = window.APP_STATE.products.length;
+                return; 
+            }
+
+            const shelfOptions = Array.from({length: 31}, (_, i) => i); const stockCOptions = Array.from({length: 61}, (_, i) => i); const shelfUOptions = Array.from({length: 51}, (_, i) => i); 
+            window.APP_STATE.products.forEach((p, idx) => {
+                const isPredefinedCat = ['cat-pallmall', 'cat-winston', 'cat-ld', 'cat-camel', 'cat-kent', 'cat-vogue', 'cat-tobacco', 'cat-general'].includes(p.categoryClass);
+                const appliedCatClass = isPredefinedCat ? p.categoryClass : 'cat-general';
+
+                const card = document.createElement('div'); card.id = `card-${p.id}`; card.className = `product-card p-2.5 rounded-lg shadow-sm border border-solid transition-all h-full flex flex-col justify-between relative overflow-hidden`;
+                
+                const isActive = p.isActive !== false;
+                const sel = isActive && p.quantity !== '' && p.quantity > 0; 
+                if(sel) card.classList.add('selected-product'); else card.classList.add(appliedCatClass);
+                
+                if (!isActive) card.classList.add('opacity-60', 'grayscale-[0.5]');
+
+                let warn = (isActive && p.skippedOrders >= 8) ? `<div class="bg-red-100 text-red-600 text-[9px] font-bold px-1 rounded mb-1 border border-red-200">⚠️ לא הוזמן זמן רב</div>` : '';
+                
+                const activeBtnHtml = `<button type="button" class="toggle-active-btn text-[11px] w-5 h-5 flex items-center justify-center rounded border transition-colors ${isActive ? 'text-slate-300 border-transparent hover:text-slate-500' : 'text-red-500 border-red-200 bg-red-50 shadow-sm'}" data-id="${p.id}" title="${isActive ? 'השעה מוצר' : 'הפעל מוצר'}"><i class="fa-solid fa-power-off"></i></button>`;
+
+                card.innerHTML = `${warn}
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex items-start gap-1.5">
+                        ${activeBtnHtml}
+                        <div class="text-[13px] font-bold leading-tight prod-name text-slate-800 ${!isActive ? 'line-through text-slate-500' : ''}">${p.name}</div>
+                    </div>
+                    <div class="${sel?'':'hidden'} bg-blue-100 text-blue-700 p-0.5 rounded-full text-[9px] check-icon shadow-sm"><i class="fa-solid fa-check"></i></div>
+                </div>
+                <div class="flex justify-between items-center mb-2 mt-auto">
+                    <div class="flex items-center gap-1">
+                        <span class="text-[10px] text-slate-500 font-bold">תקן:</span>
+                        <select id="shelf-${p.id}" class="shelf-avg-select p-0.5 bg-white/80 border border-slate-300 rounded text-xs font-bold cursor-pointer text-slate-700 shadow-sm" data-id="${p.id}">
+                            <option value="" ${p.shelfAvg === '' ? 'selected' : ''}>-</option>
+                            ${shelfOptions.map(num => `<option value="${num}" ${p.shelfAvg == num && p.shelfAvg !== '' ? 'selected' : ''}>${num}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="calc-qty-display ${sel ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'} px-2 py-0.5 rounded text-xs font-bold shadow-sm transition-colors whitespace-nowrap" id="calc-${p.id}">
+                        ${sel ? 'להזמנה: ' + p.quantity + ' ' + (p.unitType==='יחידות'?"יח'":"פאק'") : (!isActive ? 'לא פעיל' : 'אין הזמנה')}
+                    </div>
+                </div>
+                <div class="flex gap-1">
+                    <select id="stockC-${p.id}" class="stock-c-select w-1/2 p-1.5 bg-white border border-slate-300 rounded text-sm text-blue-800 font-bold focus:border-blue-500 shadow-sm" data-id="${p.id}">
+                        <option value="" ${p.stockC === '' ? 'selected' : ''}>פאקטים</option>
+                        ${stockCOptions.map(num => `<option value="${num}" ${p.stockC === String(num) ? 'selected' : ''}>${num} פאק'</option>`).join('')}
+                    </select>
+                    <select id="shelfU-${p.id}" class="shelf-u-select w-1/2 p-1.5 bg-white border border-slate-300 rounded text-sm text-blue-800 font-bold focus:border-blue-500 shadow-sm" data-id="${p.id}">
+                        <option value="" ${p.shelfU === '' ? 'selected' : ''}>יחידות</option>
+                        ${shelfUOptions.map(num => `<option value="${num}" ${p.shelfU === String(num) ? 'selected' : ''}>${num} יח'</option>`).join('')}
+                    </select>
+                </div>`;
+                grid.appendChild(card);
+            });
+            document.getElementById('totalProductsCount').innerText = window.APP_STATE.products.length; updateBottomBar();
+        }
+
+        const modalObj = {
+            show(options) {
+                document.getElementById('modalTitle').innerText = options.title || 'הודעה'; document.getElementById('modalMessage').innerText = options.message || ''; document.getElementById('modalIcon').className = options.icon || 'fa-solid fa-bell text-xl';
+                const cancelBtn = document.getElementById('modalCancel'); options.showCancel ? cancelBtn.classList.remove('hidden') : cancelBtn.classList.add('hidden');
+                const confirmBtn = document.getElementById('modalConfirm'); confirmBtn.innerText = options.confirmText || 'אישור';
+                confirmBtn.className = options.confirmColorClass ? `flex-1 py-2.5 rounded-xl font-semibold shadow-md transition-colors text-white ${options.confirmColorClass}` : `flex-1 py-2.5 rounded-xl font-semibold shadow-md transition-colors text-white bg-blue-600 hover:bg-blue-700 shadow-blue-500/30`;
+                const modal = document.getElementById('customModal');
+                const newConfirmBtn = confirmBtn.cloneNode(true); const newCancelBtn = cancelBtn.cloneNode(true);
+                confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn); cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+                newCancelBtn.addEventListener('click', () => { modal.classList.add('hidden'); if(options.onCancel) options.onCancel(); });
+                newConfirmBtn.addEventListener('click', () => { modal.classList.add('hidden'); if(options.onConfirm) options.onConfirm(); });
+                modal.classList.remove('hidden');
+            }
+        };
+
+        function setSyncStatus(text, colorClass, isPulse = false) { document.getElementById('sync-status').innerText = text; document.getElementById('sync-dot').className = `w-2 h-2 rounded-full ${colorClass} ${isPulse ? 'animate-pulse' : ''}`; }
+        function setDoubleModeUI(isActive) {
+            const btn = document.getElementById('btnToggleDouble'); const icon = document.getElementById('toggleIcon'); const txt = document.getElementById('toggleText');
+            if (isActive) { btn.classList.replace('bg-emerald-500', 'bg-red-500'); btn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600'); btn.classList.replace('border-emerald-600', 'border-red-600'); txt.innerText = 'כפולה'; icon.className = 'fa-solid fa-truck-fast'; } else { btn.classList.replace('bg-red-500', 'bg-emerald-500'); btn.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600'); btn.classList.replace('border-red-600', 'border-emerald-600'); txt.innerText = 'רגילה'; icon.className = 'fa-solid fa-basket-shopping'; }
+        }
+
+        function finalizeOrder() {
+            let isDouble = window.APP_STATE.doubleOrderMode;
+            let title = isDouble ? "סיום ושליחת הזמנה כפולה" : "סיום ושליחת הזמנה";
+            let msg = isDouble ? "ההזמנה כעת במצב 'כפולה' (מלאי לשבועיים, פחות 20%).\nההזמנה תישמר ללא עדכון הממוצעים כדי לא להרוס אותם.\nבטוח שסיימת?" : "המערכת תשמור את המלאי, תעדכן ממוצעים ותנקה את המדפים להזמנה הבאה.\n\nבטוח שסיימת?";
+            modalObj.show({
+                title: title, message: msg, showCancel: true,
+                onConfirm: () => {
+                    let snapId = Date.now();
+                    if (currentRawMessage && currentRawMessage.trim() !== "" && currentRawMessage.includes('~~~')) {
+                        if (!window.APP_STATE.orderHistory) window.APP_STATE.orderHistory = []; const now = new Date(); const dateStr = now.toLocaleDateString('he-IL') + ' ' + now.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+                        window.APP_STATE.orderHistory.push({ date: dateStr, message: currentRawMessage, snapshotId: snapId, isDouble: isDouble }); if(window.APP_STATE.orderHistory.length > 40) window.APP_STATE.orderHistory.shift();
+                    }
+
+                    let currentStocksBefore = {}; let currentStocksAfter = {};
+                    window.APP_STATE.products.forEach(p => {
+                        let stockC = parseInt(p.stockC) || 0; let shelfU = parseInt(p.shelfU) || 0; let orderQty = parseInt(p.quantity) || 0;
+                        let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
+                        let current_total_units = (stockC * unitsPerPack) + shelfU; let order_units = p.unitType === 'פאקטים' ? orderQty * unitsPerPack : orderQty;
+                        currentStocksBefore[p.id] = current_total_units; currentStocksAfter[p.id] = current_total_units + order_units;
+
+                        if (p.isActive !== false) {
+                            if (isDouble) { 
+                                if (orderQty > 0) p.skippedOrders = 0; 
+                            } else {
+                                if (orderQty > 0) { p.history.push(orderQty); p.skippedOrders = 0; } 
+                                else { p.history.push(0); p.skippedOrders++; }
+
+                                if (p.history.length > 5) p.history.shift(); 
+
+                                let currentAvg = parseInt(p.shelfAvg) || 0;
+
+                                if (currentAvg === 0) {
+                                    if (p.history.length >= 2) {
+                                        let lastTwo = p.history.slice(-2);
+                                        if (lastTwo[0] > 0 && lastTwo[1] > 0) {
+                                            p.shelfAvg = "1";
+                                            p.history = [];
+                                        }
+                                    }
+                                } else if (currentAvg === 1) {
+                                    if (p.skippedOrders >= 3) {
+                                        p.shelfAvg = "0";
+                                        p.history = [];
+                                        p.skippedOrders = 0;
+                                    } else if (p.history.length >= 3) {
+                                        let sum = p.history.slice(-3).reduce((a, b) => a + b, 0);
+                                        let newAvg = Math.round((sum / 3) * 1.1);
+                                        p.shelfAvg = newAvg < 1 ? "1" : newAvg.toString(); 
+                                        p.history = [];
+                                    }
+                                } else {
+                                    if (p.history.length >= 3) {
+                                        let sum = p.history.slice(-3).reduce((a, b) => a + b, 0);
+                                        let newAvg = Math.round((sum / 3) * 1.1);
+                                        p.shelfAvg = newAvg < 1 ? "1" : newAvg.toString(); 
+                                        p.history = [];
+                                    }
+                                }
+                            }
+                        }
+                        
+                        p.stockC = ''; p.shelfU = ''; p.quantity = ''; 
+                    });
+                    
+                    if(!window.APP_STATE.snapshots) window.APP_STATE.snapshots = [];
+                    const nowSnap = new Date(); const dateStrSnap = nowSnap.toLocaleDateString('he-IL') + ' ' + nowSnap.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+                    let actLabel = isDouble ? "עדכון מלאי והזמנה כפולה" : "עדכון מלאי והזמנה רגילה";
+                    window.APP_STATE.snapshots.push({ id: snapId, date: dateStrSnap, stocksBefore: currentStocksBefore, stocks: currentStocksAfter, actionLabel: actLabel });
+                    if(window.APP_STATE.snapshots.length > 50) window.APP_STATE.snapshots.shift(); 
+                    
+                    window.APP_STATE.doubleOrderMode = false; setDoubleModeUI(false); renderGrid(); updateBottomBar(); debouncedSave();
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            document.getElementById('customerNumberInput').addEventListener('input', (e) => {
+                window.APP_STATE.customerNumber = e.target.value;
+                debouncedSave();
+                updateBottomBar(); 
+            });
+
+            document.getElementById('productsGrid').addEventListener('click', e => {
+                const toggleBtn = e.target.closest('.toggle-active-btn');
+                if (toggleBtn) {
+                    const id = toggleBtn.dataset.id;
+                    const p = window.APP_STATE.products.find(x => x.id === id);
+                    if (p) {
+                        p.isActive = p.isActive === false ? true : false;
+                        if (p.isActive === false) p.quantity = ''; 
+                        else recalcProduct(p, window.APP_STATE.doubleOrderMode); 
+                        
+                        renderGrid();
+                        updateBottomBar();
+                        debouncedSave();
+                    }
+                }
+            });
+
+            document.getElementById('btnEditToggle').onclick = () => {
+                window.APP_STATE.isEditMode = !window.APP_STATE.isEditMode; const isE = window.APP_STATE.isEditMode;
+                document.getElementById('editBtnText').innerText = isE ? "סיום" : "עריכה"; 
+                document.getElementById('headerTitle').innerHTML = isE ? "עריכת גלוברנס" : `גלוברנס - <span id="branchNameHeader">${CURRENT_BRANCH_NAME}</span>`;
+                document.getElementById('mainHeader').classList.toggle('bg-blue-950', isE); document.getElementById('mainHeader').classList.toggle('bg-blue-900', !isE); document.getElementById('contactEditArea').classList.toggle('hidden', !isE);
+                document.getElementById('normalControls').classList.toggle('hidden', isE); document.getElementById('bottomBar').classList.toggle('translate-y-full', isE);
+                document.getElementById('hardResetBtn').classList.toggle('hidden', !isE); 
+                
+                if(isE) {
+                    document.getElementById('customerNumberInput').value = window.APP_STATE.customerNumber || '';
+                } else { 
+                    document.getElementById('searchInput').value = ''; 
+                    debouncedSave(); 
+                }
+                renderGrid();
+            };
+
+            document.getElementById('btnAddContact').onclick = () => { const name = document.getElementById('newContactName').value; const phone = document.getElementById('newContactPhone').value; if(name && phone) { window.APP_STATE.contacts.push({ name, phone: phone.replace(/\D/g,'') }); document.getElementById('newContactName').value = ''; document.getElementById('newContactPhone').value = ''; renderContacts(); debouncedSave(); } };
+            document.getElementById('contactsManagerList').addEventListener('click', (e) => { const btn = e.target.closest('.delete-contact-btn'); if (btn) { window.APP_STATE.contacts.splice(parseInt(btn.dataset.index), 1); renderContacts(); debouncedSave(); } });
+            document.addEventListener('click', e => {
+                if(e.target.closest('.contact-btn')) { window.APP_STATE.agentPhone = e.target.closest('.contact-btn').dataset.phone; document.getElementById('agentPhone').value = window.APP_STATE.agentPhone; renderContacts(); updateBottomBar(); debouncedSave(); }
+                const histBtn = e.target.closest('.history-toggle-btn'); if (histBtn) { const idx = histBtn.dataset.idx; const content = document.getElementById(`history-content-${idx}`); const icon = histBtn.querySelector('i.fa-chevron-down, i.fa-chevron-up'); content.classList.toggle('hidden'); icon.classList.toggle('fa-chevron-down'); icon.classList.toggle('fa-chevron-up'); }
+                const editBtn = e.target.closest('.edit-order-btn'); if (editBtn) openEditOrder(parseInt(editBtn.dataset.idx));
+                const stockBtn = e.target.closest('.view-stock-btn'); if (stockBtn) openViewStock(parseInt(stockBtn.dataset.idx));
+            });
+
+            document.getElementById('btnClearOrder').addEventListener('click', () => { window.APP_STATE.products.forEach(p => { p.stockC = ''; p.shelfU = ''; p.quantity = ''; }); renderGrid(); updateBottomBar(); debouncedSave(); });
+            document.getElementById('btnOpenBaselineModal').addEventListener('click', openBaselineModal);
+            document.getElementById('closeBaselineBtn').addEventListener('click', () => document.getElementById('baselineModal').classList.add('hidden'));
+            document.getElementById('saveBaselineBtn').addEventListener('click', saveBaselineData);
+            document.getElementById('searchBaseline').addEventListener('input', e => { document.querySelectorAll('.baseline-item').forEach(item => { item.style.display = item.dataset.name.includes(e.target.value) ? 'flex' : 'none'; }); });
+
+            document.getElementById('btnHistory').addEventListener('click', () => { renderHistory(); document.getElementById('historyModal').classList.remove('hidden'); });
+            document.getElementById('closeHistoryBtn').addEventListener('click', () => document.getElementById('historyModal').classList.add('hidden'));
+
+            // --- MISSING CHECK BUTTONS ---
+            document.getElementById('btnSales').addEventListener('click', openMissingCheckModal);
+            document.getElementById('closeSalesBtn').addEventListener('click', () => document.getElementById('salesModal').classList.add('hidden'));
+            document.getElementById('btnProcessMissingCheck').addEventListener('click', processMissingCheck);
+            document.getElementById('closeMissingResultBtn').addEventListener('click', () => document.getElementById('missingResultModal').classList.add('hidden'));
+            document.getElementById('btnCancelMissingFix').addEventListener('click', () => document.getElementById('missingResultModal').classList.add('hidden'));
+            document.getElementById('btnConfirmMissingFix').addEventListener('click', confirmMissingFix);
+
+            // Tab switching logic for Missing Check
+            const tabExcelMissing = document.getElementById('tabBtnExcelMissing');
+            const tabPdfMissing = document.getElementById('tabBtnPdfMissing');
+            const areaExcelMissing = document.getElementById('areaExcelMissing');
+            const areaPdfMissing = document.getElementById('areaPdfMissing');
+            
+            tabExcelMissing.addEventListener('click', () => {
+                currentMissingScannerMode = 'excel';
+                tabExcelMissing.classList.replace('bg-slate-100', 'bg-green-100');
+                tabExcelMissing.classList.replace('border-slate-300', 'border-green-500');
+                tabExcelMissing.classList.replace('text-slate-600', 'text-green-800');
+                tabExcelMissing.classList.remove('opacity-70');
+                
+                tabPdfMissing.classList.replace('bg-indigo-100', 'bg-slate-100');
+                tabPdfMissing.classList.replace('border-indigo-500', 'border-slate-300');
+                tabPdfMissing.classList.replace('text-indigo-800', 'text-slate-600');
+                tabPdfMissing.classList.add('opacity-70');
+
+                areaExcelMissing.classList.remove('hidden');
+                areaPdfMissing.classList.add('hidden');
+            });
+            
+            tabPdfMissing.addEventListener('click', () => {
+                currentMissingScannerMode = 'pdf';
+                tabPdfMissing.classList.replace('bg-slate-100', 'bg-indigo-100');
+                tabPdfMissing.classList.replace('border-slate-300', 'border-indigo-500');
+                tabPdfMissing.classList.replace('text-slate-600', 'text-indigo-800');
+                tabPdfMissing.classList.remove('opacity-70');
+                
+                tabExcelMissing.classList.replace('bg-green-100', 'bg-slate-100');
+                tabExcelMissing.classList.replace('border-green-500', 'border-slate-300');
+                tabExcelMissing.classList.replace('text-green-800', 'text-slate-600');
+                tabExcelMissing.classList.add('opacity-70');
+
+                areaPdfMissing.classList.remove('hidden');
+                areaExcelMissing.classList.add('hidden');
+            });
+
+            document.getElementById('closeOrderEditBtn').addEventListener('click', () => document.getElementById('orderEditModal').classList.add('hidden'));
+            document.getElementById('closeStockHistoryBtn').addEventListener('click', () => document.getElementById('stockHistoryModal').classList.add('hidden'));
+            document.getElementById('btnManualPulls').addEventListener('click', openManualPulls);
+            document.getElementById('closeManualPullsBtn').addEventListener('click', () => document.getElementById('manualPullsModal').classList.add('hidden'));
+            document.getElementById('savePullsBtn').addEventListener('click', saveManualPulls);
+            
+            // --- POS SCANNER BUTTONS ---
+            document.getElementById('btnUploadPos').addEventListener('click', openPosUpload);
+            document.getElementById('closePosUploadBtn').addEventListener('click', () => document.getElementById('posUploadModal').classList.add('hidden'));
+            
+            // Tab switching logic for POS upload
+            const tabExcel = document.getElementById('tabBtnExcel');
+            const tabPdf = document.getElementById('tabBtnPdf');
+            const areaExcel = document.getElementById('areaExcel');
+            const areaPdf = document.getElementById('areaPdf');
+            
+            tabExcel.addEventListener('click', () => {
+                currentScannerMode = 'excel';
+                tabExcel.classList.replace('bg-slate-100', 'bg-green-100');
+                tabExcel.classList.replace('border-slate-300', 'border-green-500');
+                tabExcel.classList.replace('text-slate-600', 'text-green-800');
+                tabExcel.classList.remove('opacity-70');
+                
+                tabPdf.classList.replace('bg-blue-100', 'bg-slate-100');
+                tabPdf.classList.replace('border-blue-500', 'border-slate-300');
+                tabPdf.classList.replace('text-blue-800', 'text-slate-600');
+                tabPdf.classList.add('opacity-70');
+
+                areaExcel.classList.remove('hidden');
+                areaPdf.classList.add('hidden');
+            });
+            
+            tabPdf.addEventListener('click', () => {
+                currentScannerMode = 'pdf';
+                tabPdf.classList.replace('bg-slate-100', 'bg-blue-100');
+                tabPdf.classList.replace('border-slate-300', 'border-blue-500');
+                tabPdf.classList.replace('text-slate-600', 'text-blue-800');
+                tabPdf.classList.remove('opacity-70');
+                
+                tabExcel.classList.replace('bg-green-100', 'bg-slate-100');
+                tabExcel.classList.replace('border-green-500', 'border-slate-300');
+                tabExcel.classList.replace('text-green-800', 'text-slate-600');
+                tabExcel.classList.add('opacity-70');
+
+                areaPdf.classList.remove('hidden');
+                areaExcel.classList.add('hidden');
+            });
+
+            document.getElementById('btnProcessAI').addEventListener('click', () => {
+                if (currentScannerMode === 'excel') {
+                    processExcelFile();
+                } else {
+                    processPOSFile();
+                }
+            });
+            
+            document.getElementById('closePosReviewBtn').addEventListener('click', () => document.getElementById('posReviewModal').classList.add('hidden'));
+            document.getElementById('confirmPosReviewBtn').addEventListener('click', () => { document.getElementById('posReviewModal').classList.add('hidden'); if (window.tempSalesData) { calculateAndApplyPOS(window.tempSalesData); } });
+            
+            document.getElementById('btnShowOriginalDoc').addEventListener('click', () => {
+                if (window.currentUploadedFileURL && window.currentUploadedFileType) {
+                    const frame = document.getElementById('docPreviewFrame');
+                    if (window.currentUploadedFileType === 'application/pdf') { 
+                        frame.src = window.currentUploadedFileURL; 
+                        frame.classList.remove('hidden'); 
+                    }
+                    document.getElementById('pdfPreviewModal').classList.remove('hidden');
+                } else {
+                    alert('לא רלוונטי לקובץ אקסל.');
+                }
+            });
+            document.getElementById('closePdfPreviewBtn').addEventListener('click', () => { document.getElementById('pdfPreviewModal').classList.add('hidden'); setTimeout(() => { document.getElementById('docPreviewFrame').src = ''; }, 300); });
+            
+            document.getElementById('searchEditOrder').addEventListener('input', e => { document.querySelectorAll('.product-edit-item').forEach(item => { item.style.display = item.dataset.name.includes(e.target.value) ? 'flex' : 'none'; }); });
+            document.getElementById('searchPulls').addEventListener('input', e => { document.querySelectorAll('.pulls-item').forEach(item => { item.style.display = item.dataset.name.includes(e.target.value) ? 'flex' : 'none'; }); });
+            document.getElementById('saveOrderEditBtn').addEventListener('click', saveOrderEdit);
+
+            document.getElementById('productsGrid').addEventListener('input', e => { 
+                if(e.target.dataset.action === 'renameCat') { 
+                    window.APP_STATE.categories[e.target.dataset.catid] = e.target.value; 
+                    debouncedSave(); 
+                    return;
+                }
+                if(e.target.dataset.action === 'updateThreshold') {
+                    if (!window.APP_STATE.categoryEmptyShelf) window.APP_STATE.categoryEmptyShelf = {};
+                    if (e.target.value === '') {
+                        delete window.APP_STATE.categoryEmptyShelf[e.target.dataset.catid];
+                    } else {
+                        window.APP_STATE.categoryEmptyShelf[e.target.dataset.catid] = parseInt(e.target.value);
+                    }
+                    debouncedSave();
+                    
+                    window.APP_STATE.products.forEach(p => {
+                        if (p.categoryClass === e.target.dataset.catid && (p.stockC !== '' || p.shelfU !== '')) {
+                            recalcProduct(p, window.APP_STATE.doubleOrderMode);
+                        }
+                    });
+                    return;
+                }
+                const id = e.target.dataset.id; const p = window.APP_STATE.products.find(x => x.id === id); if(!p) return; if(e.target.dataset.action === 'rename') { p.name = e.target.value; debouncedSave(); } else if(e.target.dataset.action === 'changeUnitsPerPack') { p.unitsPerPack = parseInt(e.target.value) || (p.categoryClass === 'cat-tobacco' ? 5 : 10); debouncedSave(); }
+            });
+            
+            document.getElementById('productsGrid').addEventListener('change', e => {
+                if(e.target.dataset.action === 'renameCat' || e.target.dataset.action === 'updateThreshold') return;
+                const id = e.target.dataset.id; const p = window.APP_STATE.products.find(x => x.id === id); if(!p) return;
+                if(e.target.dataset.action === 'changecat') { p.categoryClass = e.target.value; renderGrid(); } else if(e.target.dataset.action === 'changeunit') { p.unitType = e.target.value; } else if(e.target.classList.contains('shelf-avg-select')) { p.shelfAvg = e.target.value; recalcProduct(p, window.APP_STATE.doubleOrderMode); renderCardDynamicOnly(p); } else if(e.target.classList.contains('stock-c-select') || e.target.classList.contains('shelf-u-select')) {
+                    if (e.target.classList.contains('stock-c-select')) p.stockC = e.target.value; if (e.target.classList.contains('shelf-u-select')) p.shelfU = e.target.value;
+                    recalcProduct(p, window.APP_STATE.doubleOrderMode); renderCardDynamicOnly(p);
+                }
+                updateBottomBar(); debouncedSave();
+            });
+
+            function renderCardDynamicOnly(p) {
+                const card = document.getElementById(`card-${p.id}`); if(!card) return;
+                const calcDisplay = card.querySelector(`#calc-${p.id}`); const checkIcon = card.querySelector('.check-icon');
+                const isActive = p.isActive !== false;
+                
+                const isPredefinedCat = ['cat-pallmall', 'cat-winston', 'cat-ld', 'cat-camel', 'cat-kent', 'cat-vogue', 'cat-tobacco', 'cat-general'].includes(p.categoryClass);
+                const appliedCatClass = isPredefinedCat ? p.categoryClass : 'cat-general';
+                
+                if (isActive && p.quantity !== '' && p.quantity > 0) { 
+                    card.className = `product-card p-2.5 rounded-lg shadow-sm border border-solid transition-all h-full flex flex-col justify-between relative overflow-hidden selected-product`; 
+                    checkIcon.classList.remove('hidden'); calcDisplay.className = `calc-qty-display bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-bold shadow-sm whitespace-nowrap`; calcDisplay.innerText = `להזמנה: ${p.quantity} ${p.unitType === 'יחידות' ? "יח'" : "פאק'"}`; 
+                } else { 
+                    card.className = `product-card p-2.5 rounded-lg shadow-sm border border-solid transition-all h-full flex flex-col justify-between relative overflow-hidden ${appliedCatClass}`; 
+                    if (!isActive) card.classList.add('opacity-60', 'grayscale-[0.5]');
+                    checkIcon.classList.add('hidden'); calcDisplay.className = `calc-qty-display bg-slate-200 text-slate-500 px-2 py-0.5 rounded text-xs font-bold shadow-sm whitespace-nowrap`; calcDisplay.innerText = !isActive ? 'לא פעיל' : 'אין הזמנה'; 
+                }
+            }
+
+            document.getElementById('btnToggleDouble').addEventListener('click', () => { window.APP_STATE.doubleOrderMode = !window.APP_STATE.doubleOrderMode; const isDouble = window.APP_STATE.doubleOrderMode; setDoubleModeUI(isDouble); window.APP_STATE.products.forEach(p => { if (p.stockC !== '' || p.shelfU !== '') { recalcProduct(p, isDouble); } }); renderGrid(); updateBottomBar(); });
+            document.getElementById('btnFinishOrder').addEventListener('click', finalizeOrder);
+            document.getElementById('hardResetBtn').onclick = () => modalObj.show({ title: "איפוס התראות וממוצעים", message: "ימחק התראות, היסטוריה וארכיון מלאי קודם. להמשיך?", icon: "fa-solid fa-triangle-exclamation text-red-500 text-2xl", showCancel: true, confirmText: 'אפס', confirmColorClass: 'bg-red-500', onConfirm: () => { window.APP_STATE.products.forEach(p => { p.skippedOrders = 0; p.history = []; p.isActive = true; }); window.APP_STATE.orderHistory = []; window.APP_STATE.snapshots = []; renderGrid(); debouncedSave(); modalObj.show({ title: "היסטוריה נוקתה", showCancel: false }); } });
+            document.getElementById('copyBtn').onclick = () => { navigator.clipboard.writeText(currentRawMessage); modalObj.show({ title: "הועתק!", message: "ההזמנה מוכנה להדבקה." }); };
+            document.getElementById('searchInput').oninput = e => { window.APP_STATE.searchQuery = e.target.value; document.getElementById('clearSearch').classList.toggle('hidden', !e.target.value); window.APP_STATE.products.forEach(p => { document.getElementById(`card-${p.id}`).style.display = p.name.includes(e.target.value) ? 'flex' : 'none'; }); };
+            document.getElementById('clearSearch').onclick = () => { document.getElementById('searchInput').value = ''; window.APP_STATE.searchQuery = ''; document.getElementById('clearSearch').classList.add('hidden'); window.APP_STATE.products.forEach(p => document.getElementById(`card-${p.id}`).style.display = 'flex'); };
+            document.getElementById('agentPhone').oninput = e => { window.APP_STATE.agentPhone = e.target.value; renderContacts(); updateBottomBar(); debouncedSave(); };
+        }
+
+        function updateBottomBar() {
+            const ordered = window.APP_STATE.products.filter(p => p.isActive !== false && p.quantity !== '' && p.quantity > 0);
+            document.getElementById('header-count-num').innerText = ordered.length; const has = ordered.length > 0;
+            const whatsappContainer = document.getElementById('whatsappLink'); const smsContainer = document.getElementById('smsLink'); const copyContainer = document.getElementById('copyBtn'); const disabledBtn = document.getElementById('disabledSendBtn'); const finishBtnsWrapper = document.getElementById('btnFinishOrder').parentElement;
+            
+            if(has) {
+                whatsappContainer.classList.remove('hidden'); smsContainer.classList.remove('hidden'); copyContainer.classList.remove('hidden'); disabledBtn.classList.add('hidden'); finishBtnsWrapper.classList.remove('hidden');
+                
+                let currentCustNum = window.APP_STATE.customerNumber || '';
+                let msg = `מספר לקוח : ${currentCustNum}\n*הזמנת גלוברנס:*\n\n`; 
+                
+                const grouped = {}; ordered.forEach(p => { const cat = window.APP_STATE.categories[p.categoryClass] || 'כללי'; if(!grouped[cat]) grouped[cat] = []; grouped[cat].push(p); });
+                for(const [cat, items] of Object.entries(grouped)) { msg += `*${cat}*\n~~~~~~~~~~~~~~~~\n` + items.map(p => `${p.name}: ${p.quantity}`).join('\n\n~~~~~~~~~~~~~~~~\n') + '\n\n'; }
+                currentRawMessage = msg.trim(); const encodedMsg = encodeURIComponent(currentRawMessage);
+                let phone = window.APP_STATE.agentPhone.replace(/\D/g,''); const separator = (/iPad|iPhone|iPod/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) ? '&' : '?';
+                smsContainer.href = `sms:${phone}${separator}body=${encodedMsg}`; whatsappContainer.href = `https://wa.me/${phone.startsWith('0')?'972'+phone.substring(1):phone}?text=${encodedMsg}`;
+            } else {
+                whatsappContainer.classList.add('hidden'); smsContainer.classList.add('hidden'); copyContainer.classList.add('hidden'); disabledBtn.classList.remove('hidden'); finishBtnsWrapper.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+```
