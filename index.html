@@ -223,7 +223,10 @@
         <div id="bottomBar" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 safe-pb shadow-[0_-10px_20px_rgba(0,0,0,0.08)] z-30 w-full transition-transform duration-300">
             <div class="max-w-4xl mx-auto flex flex-col gap-2">
                 <div class="text-sm font-bold text-slate-800 text-center flex justify-between items-center px-1">
-                    <span>סה"כ: <span id="header-count-num" class="text-blue-600 text-base">0</span> פריטים להזמנה</span>
+                    <div class="flex items-center gap-2">
+                        <span>סה"כ: <span id="header-count-num" class="text-blue-600 text-base">0</span> <span class="text-xs">פריטים</span></span>
+                        <span id="total-price-display" class="hidden text-emerald-700 text-[13px] font-black bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded shadow-sm"></span>
+                    </div>
                     
                     <div class="flex gap-2">
                         <button id="btnToggleDouble" class="text-xs text-white bg-emerald-500 hover:bg-emerald-600 border border-emerald-600 transition-colors px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center justify-center gap-1 w-24">
@@ -559,7 +562,6 @@
         }
 
         function checkPin() {
-            // קוד כניסה מעודכן לפי בקשת המשתמש
             if (enteredPin === '3636') {
                 LOCAL_STORAGE_KEY = 'globrandsSmart_v1.0_branch1';
                 FIREBASE_DOC_ID = 'globrands_branch1';
@@ -655,13 +657,14 @@
                     if (p.categoryClass === 'cat-tobacco') p.unitType = 'פאקטים'; 
                     if (p.isActive === undefined) p.isActive = true; 
                     if (p.unitsPerPack === undefined) p.unitsPerPack = (p.categoryClass === 'cat-tobacco' ? 5 : 10);
+                    if (p.price === undefined) p.price = '';
                 });
                 window.APP_STATE.contacts = localData.contacts || []; window.APP_STATE.orderHistory = localData.orderHistory || []; window.APP_STATE.snapshots = localData.snapshots || []; window.APP_STATE.manualAdjustments = localData.manualAdjustments || {}; window.APP_STATE.agentPhone = localData.agentPhone || '';
                 window.APP_STATE.customerNumber = localData.customerNumber || '';
                 window.APP_STATE.categoryEmptyShelf = localData.categoryEmptyShelf || {};
             } else {
                 window.APP_STATE.categories = JSON.parse(JSON.stringify(CATEGORY_MAP));
-                window.APP_STATE.products = INITIAL_PRODUCTS.map(p => ({ id: `prod_${Math.random().toString(36).substr(2, 9)}`, name: p.name, quantity: '', stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: p.cat, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (p.cat === 'cat-tobacco' ? 5 : 10) }));
+                window.APP_STATE.products = INITIAL_PRODUCTS.map(p => ({ id: `prod_${Math.random().toString(36).substr(2, 9)}`, name: p.name, quantity: '', stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: p.cat, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (p.cat === 'cat-tobacco' ? 5 : 10), price: '' }));
                 window.APP_STATE.customerNumber = ''; 
                 window.APP_STATE.categoryEmptyShelf = {};
             }
@@ -813,8 +816,11 @@
             const container = document.getElementById('historyListContainer');
             if(!window.APP_STATE.orderHistory || window.APP_STATE.orderHistory.length === 0) { container.innerHTML = `<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-clipboard-list text-3xl mb-2"></i><br>אין עדיין היסטוריית הזמנות</div>`; return; }
             container.innerHTML = window.APP_STATE.orderHistory.slice().reverse().map((order, reversedIdx) => {
-                let actualIdx = window.APP_STATE.orderHistory.length - 1 - reversedIdx; let isDoubleLabel = order.isDouble ? '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 text-[10px] ml-2">כפולה</span>' : '';
-                return `<div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden"><div class="flex items-center bg-slate-50 border-b border-slate-100 pr-1"><button class="history-toggle-btn flex-1 text-right p-3 hover:bg-slate-100 transition-colors" data-idx="${actualIdx}"><span class="font-bold text-sm text-slate-700 flex justify-between items-center w-full"><span><i class="fa-regular fa-calendar text-slate-400 mr-1 ml-2"></i>${order.date} ${isDoubleLabel}</span><i class="fa-solid fa-chevron-down text-slate-400"></i></span></button><div class="flex items-center ml-2"><button class="view-stock-btn text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ml-1" data-idx="${actualIdx}"><i class="fa-solid fa-box"></i> מלאי</button><button class="edit-order-btn text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm" data-idx="${actualIdx}"><i class="fa-solid fa-pen"></i> ערוך</button></div></div><div class="history-content hidden p-3 bg-slate-50 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed" id="history-content-${actualIdx}">${order.message}</div></div>`;
+                let actualIdx = window.APP_STATE.orderHistory.length - 1 - reversedIdx; 
+                let isDoubleLabel = order.isDouble ? '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 text-[10px] ml-2">כפולה</span>' : '';
+                let priceLabel = order.totalPrice ? `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 text-[10px] ml-2 font-bold">₪${order.totalPrice.toLocaleString()}</span>` : '';
+                
+                return `<div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden"><div class="flex items-center bg-slate-50 border-b border-slate-100 pr-1"><button class="history-toggle-btn flex-1 text-right p-3 hover:bg-slate-100 transition-colors" data-idx="${actualIdx}"><span class="font-bold text-sm text-slate-700 flex justify-between items-center w-full"><span><i class="fa-regular fa-calendar text-slate-400 mr-1 ml-2"></i>${order.date} ${isDoubleLabel} ${priceLabel}</span><i class="fa-solid fa-chevron-down text-slate-400"></i></span></button><div class="flex items-center ml-2"><button class="view-stock-btn text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ml-1" data-idx="${actualIdx}"><i class="fa-solid fa-box"></i> מלאי</button><button class="edit-order-btn text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded text-xs font-bold transition-colors shadow-sm" data-idx="${actualIdx}"><i class="fa-solid fa-pen"></i> ערוך</button></div></div><div class="history-content hidden p-3 bg-slate-50 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed" id="history-content-${actualIdx}">${order.message}</div></div>`;
             }).join('');
         }
 
@@ -830,12 +836,30 @@
         window.saveOrderEdit = function() {
             if(editingOrderIdx < 0) return; let order = window.APP_STATE.orderHistory[editingOrderIdx];
             let newOrderMap = {}; 
+            let newTotalPrice = 0;
             let currentCustNum = window.APP_STATE.customerNumber || '';
             let newMsg = `מספר לקוח : ${currentCustNum}\n*הזמנת גלוברנס:*\n\n`; 
             let grouped = {};
-            document.querySelectorAll('#orderEditListContainer input').forEach(inp => { let val = parseInt(inp.value) || 0; let pid = inp.dataset.pid; let p = window.APP_STATE.products.find(x => x.id === pid); if(val > 0) { newOrderMap[pid] = val; const cat = window.APP_STATE.categories[p.categoryClass] || 'כללי'; if(!grouped[cat]) grouped[cat] = []; grouped[cat].push({name: p.name, qty: val, unit: p.unitType}); } });
+            
+            document.querySelectorAll('#orderEditListContainer input').forEach(inp => { 
+                let val = parseInt(inp.value) || 0; 
+                let pid = inp.dataset.pid; 
+                let p = window.APP_STATE.products.find(x => x.id === pid); 
+                if(val > 0) { 
+                    newOrderMap[pid] = val; 
+                    let pPrice = parseFloat(p.price) || 0;
+                    newTotalPrice += (val * pPrice);
+                    const cat = window.APP_STATE.categories[p.categoryClass] || 'כללי'; 
+                    if(!grouped[cat]) grouped[cat] = []; 
+                    grouped[cat].push({name: p.name, qty: val, unit: p.unitType}); 
+                } 
+            });
+            
             for(const [cat, items] of Object.entries(grouped)) { newMsg += `*${cat}*\n~~~~~~~~~~~~~~~~\n` + items.map(i => `${i.name}: ${i.qty}`).join('\n\n~~~~~~~~~~~~~~~~\n') + '\n\n'; }
+            
             order.message = newMsg.trim();
+            order.totalPrice = newTotalPrice;
+            
             if (order.snapshotId) { let snap = window.APP_STATE.snapshots.find(s => s.id === order.snapshotId); if (snap) { window.APP_STATE.products.forEach(p => { let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10)); let orderedUnits = p.unitType === 'פאקטים' ? (newOrderMap[p.id] || 0) * unitsPerPack : (newOrderMap[p.id] || 0); let before = snap.stocksBefore ? snap.stocksBefore[p.id] : (snap.stocks[p.id] || 0); snap.stocks[p.id] = before + orderedUnits; }); } }
             
             window.APP_STATE.products.forEach(p => {
@@ -1241,7 +1265,8 @@
                 recalcProduct(p, window.APP_STATE.doubleOrderMode); 
             });
 
-            window.APP_STATE.manualAdjustments = {}; debouncedSave(); renderGrid(); updateBottomBar();
+            // הפחת (manualAdjustments) כבר לא נמחק כאן! הוא נשאר בזיכרון עד לשליחת ההזמנה
+            debouncedSave(); renderGrid(); updateBottomBar();
             
             let msg = `המלאי במסך התעדכן בהצלחה!\n\nהמערכת חישבה: מלאי מהפעם האחרונה פחות ${totalSoldAcrossBoard} יחידות שנמכרו בקופה.\nהתוצאה (מלאי עדכני) הוזנה אוטומטית למשבצות במסך הראשי והזמנה חושבה לפי התקן!\n\nעבור על המסך, בדוק שההזמנה תקינה ולחץ "סיום ושליחה".`;
 
@@ -1490,7 +1515,25 @@
                         card.className = `product-card p-2.5 rounded-lg shadow-sm border border-solid transition-all flex flex-col justify-between relative overflow-hidden ${isPredefinedCat ? p.categoryClass : 'cat-general'}`;
                         
                         let currentUnitsPerPack = p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10);
-                        card.innerHTML = `<div class="flex justify-between items-center gap-2 mb-2"><input type="text" data-action="rename" data-id="${p.id}" value="${p.name}" class="font-bold text-xs bg-white/90 border rounded p-1.5 flex-1"><button type="button" onclick="window.delProd('${p.id}')" class="text-red-500 p-1 bg-red-50 rounded border border-red-100 hover:bg-red-100"><i class="fa-solid fa-trash-can"></i></button></div><div class="flex gap-1 mt-auto"><select data-action="changecat" data-id="${p.id}" class="text-[10px] flex-1 bg-white/90 border rounded p-1">${Object.entries(window.APP_STATE.categories).map(([k,v]) => `<option value="${k}" ${p.categoryClass===k?'selected':''}>${v}</option>`).join('')}</select><select data-action="changeunit" data-id="${p.id}" class="text-[10px] w-16 bg-white/90 border rounded p-1"><option value="פאקטים" ${p.unitType==='פאקטים'?'selected':''}>פאק'</option><option value="יחידות" ${p.unitType==='יחידות'?'selected':''}>יח'</option></select><div class="flex items-center gap-1 bg-white/90 border rounded p-1" title="יחידות בפקט"><i class="fa-solid fa-box-open text-[10px] text-slate-400"></i><input type="number" min="1" data-action="changeUnitsPerPack" data-id="${p.id}" value="${currentUnitsPerPack}" class="w-10 text-[10px] text-center font-bold bg-transparent outline-none"></div></div>`;
+                        let currentPrice = p.price || '';
+
+                        card.innerHTML = `
+                        <div class="flex justify-between items-center gap-2 mb-2">
+                            <input type="text" data-action="rename" data-id="${p.id}" value="${p.name}" class="font-bold text-xs bg-white/90 border rounded p-1.5 flex-1">
+                            <button type="button" onclick="window.delProd('${p.id}')" class="text-red-500 p-1 bg-red-50 rounded border border-red-100 hover:bg-red-100"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                        <div class="flex gap-1 mt-auto flex-wrap">
+                            <select data-action="changecat" data-id="${p.id}" class="text-[10px] flex-1 min-w-[70px] bg-white/90 border rounded p-1">${Object.entries(window.APP_STATE.categories).map(([k,v]) => `<option value="${k}" ${p.categoryClass===k?'selected':''}>${v}</option>`).join('')}</select>
+                            <select data-action="changeunit" data-id="${p.id}" class="text-[10px] w-14 bg-white/90 border rounded p-1"><option value="פאקטים" ${p.unitType==='פאקטים'?'selected':''}>פאק'</option><option value="יחידות" ${p.unitType==='יחידות'?'selected':''}>יח'</option></select>
+                            <div class="flex items-center justify-center gap-1 bg-white/90 border rounded p-1 w-12" title="יחידות בפקט">
+                                <i class="fa-solid fa-box-open text-[10px] text-slate-400"></i>
+                                <input type="number" min="1" data-action="changeUnitsPerPack" data-id="${p.id}" value="${currentUnitsPerPack}" class="w-full text-[10px] text-center font-bold bg-transparent outline-none">
+                            </div>
+                            <div class="flex items-center justify-center gap-1 bg-white/90 border rounded p-1 w-16" title="מחיר ליחידת הזמנה">
+                                <i class="fa-solid fa-shekel-sign text-[10px] text-slate-400"></i>
+                                <input type="number" min="0" step="0.1" data-action="changePrice" data-id="${p.id}" value="${currentPrice}" class="w-full text-[10px] text-center font-bold bg-transparent outline-none" placeholder="מחיר">
+                            </div>
+                        </div>`;
                         grid.appendChild(card);
                     });
 
@@ -1502,7 +1545,7 @@
                         for(let i = window.APP_STATE.products.length - 1; i >= 0; i--) {
                             if(window.APP_STATE.products[i].categoryClass === catId) { insertIdx = i + 1; break; }
                         }
-                        window.APP_STATE.products.splice(insertIdx, 0, { id: `p_${Date.now()}`, name: "", quantity: "", stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: catId, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (catId === 'cat-tobacco' ? 5 : 10) });
+                        window.APP_STATE.products.splice(insertIdx, 0, { id: `p_${Date.now()}`, name: "", quantity: "", stockC: '', shelfU: '', unitType: 'פאקטים', categoryClass: catId, shelfAvg: "", history: [], skippedOrders: 0, isActive: true, unitsPerPack: (catId === 'cat-tobacco' ? 5 : 10), price: '' });
                         renderGrid(); debouncedSave();
                     };
                     grid.appendChild(addBtn);
@@ -1595,13 +1638,23 @@
             let isDouble = window.APP_STATE.doubleOrderMode;
             let title = isDouble ? "סיום ושליחת הזמנה כפולה" : "סיום ושליחת הזמנה";
             let msg = isDouble ? "ההזמנה כעת במצב 'כפולה' (מלאי לשבועיים, פחות 20%).\nההזמנה תישמר ללא עדכון הממוצעים כדי לא להרוס אותם.\nבטוח שסיימת?" : "המערכת תשמור את המלאי, תעדכן ממוצעים ותנקה את המדפים להזמנה הבאה.\n\nבטוח שסיימת?";
+            
+            let currentOrderTotalPrice = 0;
+            window.APP_STATE.products.forEach(p => {
+                if (p.isActive !== false && p.quantity !== '' && p.quantity > 0) {
+                    let price = parseFloat(p.price) || 0;
+                    let qty = parseInt(p.quantity) || 0;
+                    currentOrderTotalPrice += (price * qty);
+                }
+            });
+
             modalObj.show({
                 title: title, message: msg, showCancel: true,
                 onConfirm: () => {
                     let snapId = Date.now();
                     if (currentRawMessage && currentRawMessage.trim() !== "" && currentRawMessage.includes('~~~')) {
                         if (!window.APP_STATE.orderHistory) window.APP_STATE.orderHistory = []; const now = new Date(); const dateStr = now.toLocaleDateString('he-IL') + ' ' + now.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
-                        window.APP_STATE.orderHistory.push({ date: dateStr, message: currentRawMessage, snapshotId: snapId, isDouble: isDouble }); if(window.APP_STATE.orderHistory.length > 40) window.APP_STATE.orderHistory.shift();
+                        window.APP_STATE.orderHistory.push({ date: dateStr, message: currentRawMessage, snapshotId: snapId, isDouble: isDouble, totalPrice: currentOrderTotalPrice }); if(window.APP_STATE.orderHistory.length > 40) window.APP_STATE.orderHistory.shift();
                     }
 
                     let currentStocksBefore = {}; let currentStocksAfter = {};
@@ -1660,6 +1713,9 @@
                     let actLabel = isDouble ? "עדכון מלאי והזמנה כפולה" : "עדכון מלאי והזמנה רגילה";
                     window.APP_STATE.snapshots.push({ id: snapId, date: dateStrSnap, stocksBefore: currentStocksBefore, stocks: currentStocksAfter, actionLabel: actLabel });
                     if(window.APP_STATE.snapshots.length > 50) window.APP_STATE.snapshots.shift(); 
+                    
+                    // מחיקת נתוני הפחת (manualAdjustments) מתבצעת רק כאן! אחרי אישור ההזמנה.
+                    window.APP_STATE.manualAdjustments = {}; 
                     
                     window.APP_STATE.doubleOrderMode = false; setDoubleModeUI(false); renderGrid(); updateBottomBar(); debouncedSave();
                 }
@@ -1870,11 +1926,14 @@
                     });
                     return;
                 }
-                const id = e.target.dataset.id; const p = window.APP_STATE.products.find(x => x.id === id); if(!p) return; if(e.target.dataset.action === 'rename') { p.name = e.target.value; debouncedSave(); } else if(e.target.dataset.action === 'changeUnitsPerPack') { p.unitsPerPack = parseInt(e.target.value) || (p.categoryClass === 'cat-tobacco' ? 5 : 10); debouncedSave(); }
+                const id = e.target.dataset.id; const p = window.APP_STATE.products.find(x => x.id === id); if(!p) return; 
+                if(e.target.dataset.action === 'rename') { p.name = e.target.value; debouncedSave(); } 
+                else if(e.target.dataset.action === 'changeUnitsPerPack') { p.unitsPerPack = parseInt(e.target.value) || (p.categoryClass === 'cat-tobacco' ? 5 : 10); debouncedSave(); }
+                else if(e.target.dataset.action === 'changePrice') { p.price = e.target.value; debouncedSave(); updateBottomBar(); }
             });
             
             document.getElementById('productsGrid').addEventListener('change', e => {
-                if(e.target.dataset.action === 'renameCat' || e.target.dataset.action === 'updateThreshold') return;
+                if(e.target.dataset.action === 'renameCat' || e.target.dataset.action === 'updateThreshold' || e.target.dataset.action === 'changePrice') return;
                 const id = e.target.dataset.id; const p = window.APP_STATE.products.find(x => x.id === id); if(!p) return;
                 if(e.target.dataset.action === 'changecat') { p.categoryClass = e.target.value; renderGrid(); } else if(e.target.dataset.action === 'changeunit') { p.unitType = e.target.value; } else if(e.target.classList.contains('shelf-avg-select')) { p.shelfAvg = e.target.value; recalcProduct(p, window.APP_STATE.doubleOrderMode); renderCardDynamicOnly(p); } else if(e.target.classList.contains('stock-c-select') || e.target.classList.contains('shelf-u-select')) {
                     if (e.target.classList.contains('stock-c-select')) p.stockC = e.target.value; if (e.target.classList.contains('shelf-u-select')) p.shelfU = e.target.value;
@@ -1913,6 +1972,22 @@
         function updateBottomBar() {
             const ordered = window.APP_STATE.products.filter(p => p.isActive !== false && p.quantity !== '' && p.quantity > 0);
             document.getElementById('header-count-num').innerText = ordered.length; const has = ordered.length > 0;
+            
+            let totalPrice = 0;
+            ordered.forEach(p => {
+                let price = parseFloat(p.price) || 0;
+                let qty = parseInt(p.quantity) || 0;
+                totalPrice += (price * qty);
+            });
+
+            const priceDisplay = document.getElementById('total-price-display');
+            if (totalPrice > 0) {
+                priceDisplay.innerText = `סה"כ: ₪${totalPrice.toLocaleString()}`;
+                priceDisplay.classList.remove('hidden');
+            } else {
+                priceDisplay.classList.add('hidden');
+            }
+            
             const whatsappContainer = document.getElementById('whatsappLink'); const smsContainer = document.getElementById('smsLink'); const copyContainer = document.getElementById('copyBtn'); const disabledBtn = document.getElementById('disabledSendBtn'); const finishBtnsWrapper = document.getElementById('btnFinishOrder').parentElement;
             
             if(has) {
@@ -1933,6 +2008,5 @@
     </script>
 </body>
 </html>
-
 
 ```
