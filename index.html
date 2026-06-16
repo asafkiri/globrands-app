@@ -413,7 +413,7 @@
                 <div class="p-2 overflow-y-auto flex-1 bg-slate-50" id="missingResultsList"></div>
                 
                 <div class="p-4 bg-white border-t border-slate-200" id="missingResultActionArea">
-                    <div class="text-sm font-bold text-slate-800 text-center mb-3">האם לעדכן את הפערים (חוסרים/עודפים) במלאי?</div>
+                    <div class="text-sm font-bold text-slate-800 text-center mb-3">האם לעדכן את המלאי למלאי הפיזי (האמיתי) שנספר?</div>
                     <div class="flex gap-3">
                         <button id="btnCancelMissingFix" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors text-sm border border-slate-300">
                             לא
@@ -650,6 +650,9 @@
 
         window.APP_STATE = { products: [], categories: {}, contacts: [{ name: "סוכן גלוברנס", phone: "" }], orderHistory: [], snapshots: [], manualAdjustments: {}, searchQuery: '', agentPhone: '', isEditMode: false, doubleOrderMode: false, customerNumber: '', categoryEmptyShelf: {} };
         let dbRef = null; let saveTimeout = null; let isReceivingCloudData = false; let currentRawMessage = ''; let editingOrderIdx = -1; let unscribeFirebase = null; let authUser = null; let isOnline = navigator.onLine; window.tempSalesData = null; window.tempShortagesData = {};
+        
+        // התווסף משתנה גלובלי לשמירת הכמות הפיזית המדויקת שהוקלדה
+        window.tempActualStocks = {};
         
         let currentScannerMode = 'excel'; 
         let currentMissingScannerMode = 'excel'; 
@@ -1403,7 +1406,10 @@
             let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
             let html = '';
             let totalDiscrepanciesFound = 0;
+            
             window.tempShortagesData = {}; 
+            // *** שמירת המלאי הפיזי המדויק לשימוש במעמד אישור התיקון ***
+            window.tempActualStocks = { ...actualStocks };
             
             window.APP_STATE.products.forEach(p => {
                 let unitsPerPack = (p.unitsPerPack || (p.categoryClass === 'cat-tobacco' ? 5 : 10));
@@ -1482,48 +1488,51 @@
             document.getElementById('missingResultModal').classList.remove('hidden');
         }
 
+        // הפונקציה שונתה לחלוטין - כעת היא לוקחת את המלאי הפיזי ישירות בלי חישובי הפרשים
         window.confirmMissingFix = function() {
             let lastSnap = window.APP_STATE.snapshots[window.APP_STATE.snapshots.length - 1];
-            let fixesApplied = 0;
             
-            let newStocks = { ...lastSnap.stocks }; 
+            // המלאי הקודם שהיה (לתיעוד בהיסטוריה)
             let newStocksBefore = { ...lastSnap.stocks };
+            
+            // המלאי החדש הוא בדיוק המלאי הפיזי שהזנו, בלי שום מניפולציה מתמטית
+            let newStocks = { ...window.tempActualStocks };
 
-            for (let pid in window.tempShortagesData) {
-                let diff = window.tempShortagesData[pid];
-                if (newStocks[pid] !== undefined) {
-                    newStocks[pid] -= diff;
-                    if (newStocks[pid] < 0) newStocks[pid] = 0;
-                    fixesApplied++;
+            // מוודאים שלכל מוצר יש ערך מוגדר היטב (במקרה שמוצר לא הוקלד בכלל והוא ריק)
+            window.APP_STATE.products.forEach(p => {
+                if (isNaN(newStocks[p.id]) || newStocks[p.id] === undefined) {
+                    newStocks[p.id] = lastSnap.stocks[p.id] || 0; // השאר את הקודם אם לא הוקלד כלום
                 }
-            }
+            });
             
             document.getElementById('missingResultModal').classList.add('hidden');
             
-            if (fixesApplied > 0) {
-                let snapId = Date.now();
-                const nowSnap = new Date();
-                const dateStrSnap = nowSnap.toLocaleDateString('he-IL') + ' ' + nowSnap.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+            // שומרים את נקודת הזמן החדשה
+            let snapId = Date.now();
+            const nowSnap = new Date();
+            const dateStrSnap = nowSnap.toLocaleDateString('he-IL') + ' ' + nowSnap.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
 
-                window.APP_STATE.snapshots.push({
-                    id: snapId,
-                    date: dateStrSnap,
-                    stocksBefore: newStocksBefore,
-                    stocks: newStocks,
-                    actionLabel: "תיקון חוסרים/עודפים מספירה"
-                });
+            window.APP_STATE.snapshots.push({
+                id: snapId,
+                date: dateStrSnap,
+                stocksBefore: newStocksBefore,
+                stocks: newStocks,
+                actionLabel: "עדכון ספירה (מלאי פיזי מדויק)"
+            });
 
-                if(window.APP_STATE.snapshots.length > 50) window.APP_STATE.snapshots.shift();
+            if(window.APP_STATE.snapshots.length > 50) window.APP_STATE.snapshots.shift();
+            
+            // איפוס משיכות הפחת הידניות מכיוון שעשינו ספירה מקיפה כרגע
+            window.APP_STATE.manualAdjustments = {};
 
-                debouncedSave();
-                
-                modalObj.show({ 
-                    title: "תוקן בהצלחה", 
-                    message: "הפערים עודכנו, ונוצרה נקודת מלאי מעודכנת (לפי השעה והתאריך של עכשיו).\nכעת המלאי מדויק להזמנה הבאה.", 
-                    icon: "fa-solid fa-check-double text-emerald-500 text-2xl", 
-                    showCancel: false 
-                });
-            }
+            debouncedSave();
+            
+            modalObj.show({ 
+                title: "העדכון בוצע", 
+                message: "המלאי הפיזי שהזנת נשמר כעת במדויק ומהווה את המלאי העדכני של המערכת (ללא חישובים נוספים). המלאי כעת מדויק לחלוטין להזמנה הבאה.", 
+                icon: "fa-solid fa-check-double text-emerald-500 text-2xl", 
+                showCancel: false 
+            });
         };
 
         window.triggerDeleteModal = (id) => {
@@ -1953,8 +1962,9 @@
                     let actual = (packs * unitsPerPack) + units;
                     let diff = expected - actual;
 
-                    // Update global state for when the user clicks 'save'
                     window.tempShortagesData[pid] = diff;
+                    // *** הוספנו: עדכון דינמי של המלאי הפיזי המדויק גם כשהוא משנה ידנית במסך ***
+                    window.tempActualStocks[pid] = actual;
 
                     // Update UI Elements dynamically
                     const card = document.getElementById(`result-card-${pid}`);
@@ -2255,6 +2265,5 @@
     </script>
 </body>
 </html>
-
 
 ```
