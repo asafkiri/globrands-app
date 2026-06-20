@@ -167,7 +167,7 @@
           <button id="scanClose" class="btn-tap w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center"><i class="fa-solid fa-xmark text-xl"></i></button>
         </div>
         <div class="absolute bottom-0 inset-x-0 p-8 text-center">
-          <p class="text-white font-bold" style="text-shadow:0 1px 3px rgba(0,0,0,.6)">כוון את הברקוד אל תוך המסגרת</p>
+          <p id="scanHint" class="text-white font-bold" style="text-shadow:0 1px 3px rgba(0,0,0,.6)">כוון את הברקוד אל תוך המסגרת</p>
         </div>
       </div>
     </div>
@@ -785,7 +785,7 @@ function openBarcodePrompt(productId, isEdit) {
   $('promptTitle').textContent = isEdit ? 'עריכת ברקוד' : 'הוספת ברקוד';
   $('promptSub').textContent = p.name;
   $('promptInput').value = p.barcode || '';
-  $('promptScan').classList.toggle('hidden', !scannerSupported());
+  $('promptScan').classList.remove('hidden');
   const m = $('promptModal'); m.classList.remove('hidden'); m.classList.add('flex');
   setTimeout(() => { const i = $('promptInput'); if (i) { i.focus(); i.select(); } }, 60);
 }
@@ -1045,16 +1045,30 @@ function hideConfirm() { const m = $('confirmModal'); m.classList.add('hidden');
 
 // ===== סריקת ברקוד במצלמה =====
 let scanStream = null, scanTimer = null, barcodeDetector = null;
-function scannerSupported() { return typeof window.BarcodeDetector !== 'undefined'; }
+let zxingReader = null, zxingActive = false;
+function nativeScanSupported() { return typeof window.BarcodeDetector !== 'undefined'; }
+function setScanHint(t) { const h = $('scanHint'); if (h) h.textContent = t; }
 async function openScanner() {
-  if (!scannerSupported()) { showToast('המכשיר לא תומך בסריקת מצלמה — אפשר להקליד ידנית', null, null, 3500); return; }
+  const m = $('scanModal'); m.classList.remove('hidden'); m.classList.add('flex');
+  setScanHint('מבקש גישה למצלמה...');
   try {
-    if (!barcodeDetector) barcodeDetector = new window.BarcodeDetector();
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-    const v = $('scanVideo'); v.srcObject = scanStream; await v.play();
-    const m = $('scanModal'); m.classList.remove('hidden'); m.classList.add('flex');
-    scanTimer = setTimeout(scanTick, 400);
-  } catch (e) { console.error(e); showToast('לא ניתן לפתוח את המצלמה (בדוק הרשאה)', null, null, 3500); closeScanner(); }
+    if (nativeScanSupported()) {
+      if (!barcodeDetector) barcodeDetector = new window.BarcodeDetector();
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      const v = $('scanVideo'); v.srcObject = scanStream; await v.play();
+      setScanHint('כוון את הברקוד אל תוך המסגרת');
+      scanTimer = setTimeout(scanTick, 400);
+    } else {
+      setScanHint('טוען מנוע סריקה...');
+      await ensureZxing();
+      setScanHint('כוון את הברקוד אל תוך המסגרת');
+      await startZxing();
+    }
+  } catch (e) {
+    console.error(e);
+    showToast('לא ניתן להפעיל את המצלמה (בדוק הרשאה/חיבור)', null, null, 4000);
+    closeScanner();
+  }
 }
 function scanTick() {
   if (!scanStream || !barcodeDetector) return;
@@ -1066,6 +1080,26 @@ function scanTick() {
     else scanTimer = setTimeout(scanTick, 200);
   }).catch(() => { if (scanStream) scanTimer = setTimeout(scanTick, 300); });
 }
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = resolve; s.onerror = () => reject(new Error('script load failed'));
+    document.head.appendChild(s);
+  });
+}
+async function ensureZxing() {
+  if (window.ZXing && window.ZXing.BrowserMultiFormatReader) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js');
+}
+async function startZxing() {
+  if (!zxingReader) zxingReader = new window.ZXing.BrowserMultiFormatReader();
+  zxingActive = true;
+  await zxingReader.decodeFromConstraints(
+    { video: { facingMode: { ideal: 'environment' } } },
+    $('scanVideo'),
+    (result) => { if (result && zxingActive) { const t = result.getText ? result.getText() : (result.text || ''); if (t) onScanned(t); } }
+  );
+}
 function onScanned(val) {
   buzz(40);
   const inp = $('promptInput'); if (inp) inp.value = (val || '').toString().trim();
@@ -1073,6 +1107,8 @@ function onScanned(val) {
 }
 function closeScanner() {
   if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+  zxingActive = false;
+  if (zxingReader) { try { zxingReader.reset(); } catch (e) {} }
   if (scanStream) { try { scanStream.getTracks().forEach(tr => tr.stop()); } catch (e) {} scanStream = null; }
   const v = $('scanVideo'); if (v) { try { v.pause(); v.srcObject = null; } catch (e) {} }
   const m = $('scanModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
