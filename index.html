@@ -402,11 +402,11 @@ function buildOrderRow(p) {
   return (
     '<div id="row-' + p.id + '" data-id="' + p.id + '" data-name="' + safeName + '" class="row-card flex items-center gap-2 p-2.5 rounded-2xl border shadow-sm ' +
       (sel ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100') + '">' +
-      '<div class="flex-1 min-w-0 font-bold text-slate-800 text-sm leading-tight">' + p.name + '</div>' +
       '<button data-role="rec" data-id="' + p.id + '" ' + (recOff ? 'disabled' : '') + ' class="btn-tap shrink-0 w-16 h-12 rounded-xl flex flex-col items-center justify-center leading-none ' +
         (recOff ? 'bg-slate-100 text-slate-300' : 'bg-blue-600 text-white shadow-md shadow-blue-500/20') + '">' +
         '<span class="text-[9px] font-bold opacity-80">מומלץ</span><span class="text-lg font-black">' + (recOff ? '—' : rec) + '</span>' +
       '</button>' +
+      '<div class="flex-1 min-w-0 font-bold text-slate-800 text-sm leading-tight">' + p.name + '</div>' +
       '<input data-role="amount" data-id="' + p.id + '" type="text" inputmode="numeric" enterkeyhint="next" value="' + st.amount + '" placeholder="0" class="shrink-0 w-12 h-12 text-center text-lg font-black border-2 border-slate-200 rounded-xl focus:border-blue-500 outline-none bg-white">' +
       '<button data-role="unit" data-id="' + p.id + '" class="btn-tap shrink-0 w-14 h-12 rounded-xl font-black flex flex-col items-center justify-center gap-0.5 ' +
         (isCarton ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800') + '">' +
