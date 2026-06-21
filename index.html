@@ -219,8 +219,19 @@
             <div class="flex-1"><label class="text-[11px] text-slate-400 font-bold block mb-1">מתאריך</label><input id="promoStart" type="date" class="w-full p-2.5 rounded-xl border-2 border-slate-200 outline-none text-sm font-bold focus:border-rose-500"></div>
             <div class="flex-1"><label class="text-[11px] text-slate-400 font-bold block mb-1">עד תאריך</label><input id="promoEnd" type="date" class="w-full p-2.5 rounded-xl border-2 border-slate-200 outline-none text-sm font-bold focus:border-rose-500"></div>
           </div>
-          <label class="text-[11px] text-slate-400 font-bold block mb-1 mt-3">כמות מינ׳ למבצע (ארגזים)</label>
-          <input id="promoMin" type="text" inputmode="numeric" class="w-full p-2.5 rounded-xl border-2 border-slate-200 outline-none text-center font-black focus:border-rose-500" placeholder="1 = ללא תנאי כמות">
+          <label class="text-[11px] text-slate-400 font-bold block mb-1 mt-3">כמות מינימלית למבצע</label>
+          <div class="flex gap-2 items-stretch">
+            <input id="promoMin" type="text" inputmode="numeric" class="w-20 p-2.5 rounded-xl border-2 border-slate-200 outline-none text-center font-black focus:border-rose-500" placeholder="1">
+            <div class="flex-1 flex bg-slate-100 rounded-xl p-1">
+              <button id="promoUnitU" class="flex-1 py-2 rounded-lg text-sm font-black">יחידות</button>
+              <button id="promoUnitC" class="flex-1 py-2 rounded-lg text-sm font-black">ארגזים</button>
+            </div>
+          </div>
+          <div id="promoCartonWrap" class="hidden mt-2">
+            <label class="text-[11px] text-slate-400 font-bold block mb-1">כמה יחידות יש בארגז אחד?</label>
+            <input id="promoCarton" type="text" inputmode="numeric" class="w-full p-2.5 rounded-xl border-2 border-slate-200 outline-none text-center font-black focus:border-rose-500" placeholder="לדוגמה 12">
+          </div>
+          <div id="promoUnitsHint" class="text-[11px] text-slate-500 font-bold mt-1.5 min-h-[16px]"></div>
           <button id="promoRemove" class="btn-tap hidden mt-3 w-full py-2.5 rounded-xl font-black bg-rose-50 text-rose-600 flex items-center justify-center gap-2"><i class="fa-solid fa-ban"></i> בטל מבצע</button>
         </div>
         <div class="flex gap-2 p-4 pt-0">
@@ -277,6 +288,15 @@
           </div>
           <label class="text-[11px] text-slate-400 font-bold block mb-1">מחיר ליחידה (ללא מע"מ)</label>
           <div class="flex items-center gap-2"><span class="text-slate-400 font-bold text-lg">₪</span><input id="prod_price" type="text" inputmode="decimal" class="flex-1 p-3 rounded-xl border-2 border-slate-200 outline-none text-center font-black focus:border-blue-500" placeholder="0.00"></div>
+          <div class="mt-2.5 bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+            <div class="text-[11px] text-slate-500 font-bold mb-1.5"><i class="fa-solid fa-calculator"></i> מחשבון: מחיר ארגז ← מחיר ליחידה</div>
+            <div class="flex items-center gap-2">
+              <input id="prod_cartonPrice" type="text" inputmode="decimal" class="flex-1 w-full p-2 rounded-lg border-2 border-slate-200 outline-none text-center font-bold text-sm focus:border-blue-500" placeholder="מחיר לארגז">
+              <span class="text-slate-400 font-black">÷</span>
+              <input id="prod_cartonUnits" type="text" inputmode="numeric" class="flex-1 w-full p-2 rounded-lg border-2 border-slate-200 outline-none text-center font-bold text-sm focus:border-blue-500" placeholder="יח׳ בארגז">
+            </div>
+            <div id="prod_cartonResult" class="text-[11px] text-emerald-700 font-bold mt-1.5 min-h-[15px]"></div>
+          </div>
           <button id="prod_del" class="btn-tap hidden mt-3 w-full py-2.5 rounded-xl font-black bg-red-50 text-red-600 flex items-center justify-center gap-2"><i class="fa-solid fa-trash-can"></i> מחק מוצר</button>
         </div>
         <div class="px-4 pb-2"><button id="prod_again" class="btn-tap hidden w-full py-3.5 rounded-xl font-black bg-blue-600 text-white flex items-center justify-center gap-2 text-base"><i class="fa-solid fa-barcode"></i> שמור וסרוק הבא</button></div>
@@ -396,6 +416,7 @@ let npMode = 'create', npProductId = null, npTarget = 'receipt'; // מצב + י�
 let promoEditId = null;          // מוצר בעריכת מבצע
 let qtyProduct = null, qtyTarget = 'receipt'; // חלון כמות בסריקה
 let priceEditId = null, priceFromScan = false, priceQuery = ''; // עדכון מחירים
+let promoUnitMode = 'unit'; // יחידת סף המבצע: 'unit' | 'carton'
 const priceTimers = {};
 
 const $ = (id) => document.getElementById(id);
@@ -572,7 +593,7 @@ function buildOrderRow(p) {
   const rec = parseInt(p.average, 10) || 0;
   const recOff = rec <= 0;
   const safeName = (p.name || '').replace(/"/g, '&quot;');
-  const promoNote = isPromoActive(p) ? ('<div class="text-[10px] font-black text-rose-600 mt-0.5 flex items-center gap-1"><i class="fa-solid fa-tag"></i> מבצע ' + (Number(p.promo.pct) || 0) + '%' + (promoMinQty(p) > 1 ? ' · הזמן ' + promoMinQty(p) + '+ ארגז' : '') + '</div>') : '';
+  const promoNote = isPromoActive(p) ? ('<div class="text-[10px] font-black text-rose-600 mt-0.5 flex items-center gap-1"><i class="fa-solid fa-tag"></i> מבצע ' + (Number(p.promo.pct) || 0) + '%' + (promoMinUnits(p) > 1 ? ' · מ-' + promoMinLabel(p) : '') + '</div>') : '';
   return (
     '<div id="row-' + p.id + '" data-id="' + p.id + '" data-name="' + safeName + '" class="row-card flex items-center gap-2 p-2.5 rounded-2xl border shadow-sm ' +
       (sel ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100') + '">' +
@@ -1366,11 +1387,22 @@ function isPromoActive(p, dateStr) {
   const pr = p && p.promo;
   return !!(pr && pr.pct != null && pr.pct > 0 && pr.start && pr.end && dateStr >= pr.start && dateStr <= pr.end);
 }
-function promoMinQty(p) { const m = p && p.promo && p.promo.minQty; return (m && m > 1) ? m : 1; }
+function promoMinUnits(p) {
+  const pr = p && p.promo; if (!pr) return 1;
+  const q = Number(pr.minQty) || 1;
+  if (pr.minUnit === 'carton') { const cs = Number(pr.cartonSize) || 0; return cs > 0 ? Math.max(1, q * cs) : Math.max(1, q); }
+  return Math.max(1, q);
+}
+function promoMinLabel(p) {
+  const pr = p && p.promo; if (!pr) return '';
+  const mu = promoMinUnits(p); if (mu <= 1) return '';
+  if (pr.minUnit === 'carton' && (Number(pr.cartonSize) || 0) > 0) return (Number(pr.minQty) || 1) + ' ארגז';
+  return mu + ' יח׳';
+}
 function effectivePrice(p, qty, dateStr) {
   if (!p) return 0;
   const base = Number(p.price) || 0;
-  if (isPromoActive(p, dateStr) && (Number(qty) || 0) >= promoMinQty(p)) return r2(base * (1 - (Number(p.promo.pct) || 0) / 100));
+  if (isPromoActive(p, dateStr) && (Number(qty) || 0) >= promoMinUnits(p)) return r2(base * (1 - (Number(p.promo.pct) || 0) / 100));
   return r2(base);
 }
 function receiptTotals() {
@@ -1521,12 +1553,12 @@ function buildReceiptRow(it) {
   const day = todayStr();
   const unit = p ? effectivePrice(p, it.qty, day) : 0;
   const promoDate = p ? isPromoActive(p, day) : false;
-  const minQ = promoMinQty(p);
+  const minQ = promoMinUnits(p);
   const applied = promoDate && it.qty >= minQ;
   const lineTotal = r2(unit * it.qty);
   let promoTag = '';
   if (applied) promoTag = '<span class="text-rose-600 font-bold">· מבצע ' + (Number(p.promo.pct) || 0) + '%</span>';
-  else if (promoDate) promoTag = '<span class="text-amber-600 font-bold">· מבצע ' + (Number(p.promo.pct) || 0) + '% מ-' + minQ + ' ארגז</span>';
+  else if (promoDate) promoTag = '<span class="text-amber-600 font-bold">· מבצע ' + (Number(p.promo.pct) || 0) + '% מ-' + promoMinLabel(p) + '</span>';
   return '<div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm" data-id="' + it.productId + '">' +
     '<div class="flex items-start gap-2">' +
       '<div class="flex-1 min-w-0">' +
@@ -1633,7 +1665,7 @@ function finishReceipt() {
   const lines = receiptList.map(it => {
     const p = products.find(x => x.id === it.productId);
     const unit = effectivePrice(p, it.qty, day);
-    const applied = isPromoActive(p, day) && it.qty >= promoMinQty(p);
+    const applied = isPromoActive(p, day) && it.qty >= promoMinUnits(p);
     return { productId: it.productId, name: it.name || (p ? p.name : ''), barcode: it.barcode || (p ? p.barcode : '') || '', qty: it.qty, unitPrice: unit, lineTotal: r2(unit * it.qty), promoPct: (applied ? (Number(p.promo.pct) || 0) : 0) };
   });
   const ex = r2(lines.reduce((a, l) => a + l.lineTotal, 0));
@@ -1740,7 +1772,7 @@ function priceRowHtml(p) {
   const promoOn = isPromoActive(p, day);
   const hasPromo = !!(p.promo && p.promo.pct != null && p.promo.pct > 0);
   const promoUnit = r2((Number(p.price) || 0) * (1 - (Number(p.promo && p.promo.pct) || 0) / 100));
-  const minQ = promoMinQty(p);
+  const minQ = promoMinUnits(p);
   return '<div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm" data-id="' + p.id + '">' +
     '<div class="flex items-center gap-2">' +
       '<button data-role="edit-prod" data-id="' + p.id + '" class="btn-tap flex-1 min-w-0 text-right">' +
@@ -1751,7 +1783,7 @@ function priceRowHtml(p) {
     '</div>' +
     '<div class="flex items-center justify-between mt-2.5 pt-2.5 border-t border-slate-100">' +
       (hasPromo
-        ? '<div class="text-xs min-w-0"><span class="font-black ' + (promoOn ? 'text-rose-600' : 'text-slate-400') + '">מבצע ' + p.promo.pct + '%' + (minQ > 1 ? ' · מ-' + minQ + ' ארגז' : '') + '</span> <span class="text-slate-400">' + p.promo.start + '←' + p.promo.end + '</span>' + (promoOn ? ' <span class="text-rose-600 font-bold">₪' + fmtMoney(promoUnit) + '</span>' : ' <span class="text-slate-300">(לא פעיל)</span>') + '</div>'
+        ? '<div class="text-xs min-w-0"><span class="font-black ' + (promoOn ? 'text-rose-600' : 'text-slate-400') + '">מבצע ' + p.promo.pct + '%' + (minQ > 1 ? ' · מ-' + promoMinLabel(p) : '') + '</span> <span class="text-slate-400">' + p.promo.start + '←' + p.promo.end + '</span>' + (promoOn ? ' <span class="text-rose-600 font-bold">₪' + fmtMoney(promoUnit) + '</span>' : ' <span class="text-slate-300">(לא פעיל)</span>') + '</div>'
         : '<div class="text-xs text-slate-400">אין מבצע</div>') +
       '<button data-role="edit-promo" data-id="' + p.id + '" class="btn-tap shrink-0 text-blue-600 font-black text-sm flex items-center gap-1.5"><i class="fa-solid fa-percent"></i> ' + (hasPromo ? 'ערוך' : 'הוסף') + ' מבצע</button>' +
     '</div>' +
@@ -1796,6 +1828,7 @@ function openProdModal(p, fromScan, presetCode) {
   $('prod_name').value = p ? (p.name || '') : '';
   $('prod_barcode').value = p ? (p.barcode || '') : (presetCode || '');
   $('prod_price').value = (p && p.price != null) ? p.price : '';
+  $('prod_cartonPrice').value = ''; $('prod_cartonUnits').value = ''; $('prod_cartonResult').textContent = '';
   $('prod_del').classList.toggle('hidden', !p);
   $('prod_again').classList.toggle('hidden', !fromScan);
   closeScanner();
@@ -1803,6 +1836,16 @@ function openProdModal(p, fromScan, presetCode) {
   setTimeout(() => { const i = $(p ? 'prod_price' : 'prod_name'); if (i) { i.focus(); if (i.select) i.select(); } }, 80);
 }
 function hideProdModal() { const m = $('prodModal'); m.classList.add('hidden'); m.classList.remove('flex'); priceEditId = null; priceFromScan = false; }
+function calcCartonPrice() {
+  const cp = parseFloat(($('prod_cartonPrice').value || '').toString().replace(',', '.'));
+  const cu = parseInt(($('prod_cartonUnits').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+  const out = $('prod_cartonResult');
+  if (cp > 0 && cu > 0) {
+    const per = r2(cp / cu);
+    $('prod_price').value = per;
+    if (out) out.textContent = 'מחיר לארגז ' + fmtMoney(cp) + ' ₪ ÷ ' + cu + ' = ' + fmtMoney(per) + ' ₪ ליחידה';
+  } else if (out) { out.textContent = ''; }
+}
 function scanProdBarcode() {
   scanPurpose = 'prodbarcode';
   const m = $('prodModal'); m.classList.add('hidden'); m.classList.remove('flex');
@@ -1849,9 +1892,31 @@ function openPromoEditor(id) {
   $('promoStart').value = pr.start || todayStr();
   $('promoEnd').value = pr.end || '';
   $('promoMin').value = (pr.minQty != null && pr.minQty > 1) ? pr.minQty : '';
+  $('promoCarton').value = (pr.cartonSize != null && pr.cartonSize > 0) ? pr.cartonSize : '';
+  setPromoUnitMode(pr.minUnit === 'carton' ? 'carton' : 'unit');
   $('promoRemove').classList.toggle('hidden', !(pr.pct != null && pr.pct > 0));
   const m = $('promoModal'); m.classList.remove('hidden'); m.classList.add('flex');
   setTimeout(() => { const i = $('promoPct'); if (i) i.focus(); }, 80);
+}
+function setPromoUnitMode(mode) {
+  promoUnitMode = (mode === 'carton') ? 'carton' : 'unit';
+  const u = $('promoUnitU'), c = $('promoUnitC');
+  const base = 'flex-1 py-2 rounded-lg text-sm font-black ';
+  if (u) u.className = base + (promoUnitMode === 'unit' ? 'bg-white text-rose-600 shadow' : 'text-slate-500');
+  if (c) c.className = base + (promoUnitMode === 'carton' ? 'bg-white text-rose-600 shadow' : 'text-slate-500');
+  const wrap = $('promoCartonWrap'); if (wrap) wrap.classList.toggle('hidden', promoUnitMode !== 'carton');
+  updatePromoHint();
+}
+function updatePromoHint() {
+  const hint = $('promoUnitsHint'); if (!hint) return;
+  const q = parseInt(($('promoMin').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+  if (q <= 1) { hint.textContent = (q === 1 ? 'ללא תנאי כמות — חל על כל כמות' : ''); return; }
+  if (promoUnitMode === 'carton') {
+    const cs = parseInt(($('promoCarton').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    hint.textContent = cs > 0 ? ('המבצע חל מ-' + (q * cs) + ' יחידות (' + q + ' ארגז × ' + cs + ')') : 'הזן כמה יחידות יש בארגז';
+  } else {
+    hint.textContent = 'המבצע חל מ-' + q + ' יחידות';
+  }
 }
 function hidePromo() { const m = $('promoModal'); m.classList.add('hidden'); m.classList.remove('flex'); promoEditId = null; }
 function savePromo() {
@@ -1861,9 +1926,14 @@ function savePromo() {
   const end = $('promoEnd').value || '';
   if (!(pct > 0) || !start || !end) { showToast('מלא אחוז, תאריך התחלה ותאריך סיום', null, null, 2600); return; }
   if (end < start) { showToast('תאריך הסיום חייב להיות אחרי ההתחלה', null, null, 2600); return; }
-  const minRaw = parseInt(($('promoMin').value || '').replace(/[^0-9]/g, ''), 10);
-  const minQty = (minRaw > 1) ? minRaw : 1;
-  const promo = { pct: r2(pct), start, end, minQty };
+  const qty = parseInt(($('promoMin').value || '').replace(/[^0-9]/g, ''), 10) || 1;
+  const minUnit = (promoUnitMode === 'carton') ? 'carton' : 'unit';
+  let cartonSize = null;
+  if (minUnit === 'carton') {
+    cartonSize = parseInt(($('promoCarton').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (qty > 1 && !(cartonSize > 0)) { showToast('הזן כמה יחידות יש בארגז', null, null, 2600); return; }
+  }
+  const promo = { pct: r2(pct), start, end, minQty: Math.max(1, qty), minUnit, cartonSize };
   const p = products.find(x => x.id === id); if (p) p.promo = promo;
   hidePromo();
   if (db) updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', id), { promo }).catch(console.error);
@@ -1900,6 +1970,10 @@ $('npr_ok').addEventListener('click', saveNewProduct);
 $('promo_cancel').addEventListener('click', hidePromo);
 $('promo_ok').addEventListener('click', savePromo);
 $('promoRemove').addEventListener('click', removePromo);
+$('promoUnitU').addEventListener('click', () => setPromoUnitMode('unit'));
+$('promoUnitC').addEventListener('click', () => setPromoUnitMode('carton'));
+$('promoMin').addEventListener('input', updatePromoHint);
+$('promoCarton').addEventListener('input', updatePromoHint);
 $('rs_cancel').addEventListener('click', hideReceiptSummary);
 $('rs_ok').addEventListener('click', confirmReceipt);
 $('qty_minus').addEventListener('click', () => qtyStep(-1));
@@ -1913,6 +1987,8 @@ $('prod_save').addEventListener('click', () => saveProd(false));
 $('prod_again').addEventListener('click', () => saveProd(true));
 $('prod_del').addEventListener('click', delProdFromModal);
 $('pr_scanbc').addEventListener('click', scanProdBarcode);
+$('prod_cartonPrice').addEventListener('input', calcCartonPrice);
+$('prod_cartonUnits').addEventListener('input', calcCartonPrice);
 $('scanClose').addEventListener('click', closeScanner);
 $('toastBtn').addEventListener('click', doUndo);
 $('closeSend').addEventListener('click', hideSend);
