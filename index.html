@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v284 ניתוח מוצרים — בלי "נמכר" בראש המסך, השוואה לאותם ימים בחודש שעבר, מבצעים לא נחשבים שינוי מחיר</title>
+    <title>הזמנות יטבתה - v285 היסטוריית הזמנות — ריבוע "הוזמן ולא הגיע" לפי תעודות הקליטה שאחרי ההזמנה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -111,7 +111,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v284 ניתוח מוצרים — בלי "נמכר" בראש המסך, השוואה לאותם ימים בחודש שעבר, מבצעים לא נחשבים שינוי מחיר</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v285 היסטוריית הזמנות — ריבוע "הוזמן ולא הגיע" לפי תעודות הקליטה שאחרי ההזמנה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -1121,7 +1121,8 @@ function startListeners() {
   const rcQ = query(rcRef, orderBy('timestamp', 'desc'), limit(100));
   onSnapshot(rcQ, (snap) => {
     receipts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (currentView === 'receiptsHistory' || currentView === 'receiving' || currentView === 'health') rerender();
+    // v285: גם מסך ההיסטוריה תלוי בתעודות — הריבוע "לא הגיע" נגזר מהן.
+    if (currentView === 'receiptsHistory' || currentView === 'receiving' || currentView === 'health' || currentView === 'history') rerender();
     setTimeout(migrateLegacyReceiptOffsets, 0);
     setTimeout(stampResolvedAiPriceFindings, 0); // v202
     setTimeout(autoOffsetSweep, 0); // v249: קיזוז אוטומטי כשמתגלה זוג מדויק
@@ -2344,6 +2345,58 @@ function renderContacts() {
     '</div>';
 }
 
+// ===== v285: "הוזמן ולא הגיע" בכרטיס ההזמנה =====
+// בדיקה בינארית בלבד: מוצר שהוזמן ולא מופיע באף תעודת קליטה שנקלטה אחרי
+// ההזמנה — לא הגיע. כמות חלקית נחשבת "הגיע" (הזמנת 2, הגיע 1 = הגיע),
+// ולכן אין כאן שום המרה בין ארגזים ליחידות ואין תלות ב-boxSize.
+// מוצג רק במסך ההיסטוריה ובכוונה לא בבאנר הפערים: שם יושבים פערי הכסף
+// מול תעודות הספק, וחוסר מהזמנה הוא שאלה אחרת לגמרי.
+
+// הזמנות שנשמרו לפני v285 אין בהן productId — נופלים לשם המוצר.
+function orderItemKey(it) {
+  if (it && it.productId) return it.productId;
+  const name = String((it && it.name) || '').trim();
+  if (!name) return '';
+  const p = products.find(x => String(x.name || '').trim() === name);
+  return p ? p.id : ('name:' + name);
+}
+
+// כל התעודות שנקלטו מרגע ההזמנה ועד ההזמנה הבאה. history ממוין יורד,
+// ולכן ההזמנה החדשה יותר יושבת דווקא באינדקס הקטן יותר. החלון נחוץ כי
+// הזמנה של מוצ״ש נקלטת ביום ראשון — "אותו יום" היה שובר בדיוק את זה.
+function receiptsForOrder(index) {
+  const o = history[index];
+  const from = Number(o && o.timestamp) || 0;
+  if (!from) return [];
+  const next = history[index - 1];
+  const to = Number(next && next.timestamp) || Infinity;
+  return receipts.filter(r => { const t = Number(r.timestamp) || 0; return t >= from && t < to; });
+}
+
+// null = עוד לא נקלטה אף תעודה אחרי ההזמנה, ולכן אין מה לומר עליה.
+// בלי ההבחנה הזאת כל הזמנה טרייה הייתה מכריזה שכל הסחורה חסרה.
+function orderMissingItems(index) {
+  const o = history[index];
+  const items = (o && o.items) || [];
+  if (!items.length) return null;
+  const winRecs = receiptsForOrder(index);
+  if (!winRecs.length) return null;
+  const arrived = new Set();
+  winRecs.forEach(r => (r.items || []).forEach(l => {
+    // שורה שנקראה מהנייר אך נספרה באפס לא הגיעה בפועל — היא נשארת "לא הגיע".
+    if (l.isDeposit || !((Number(l.qty) || 0) > 0)) return;
+    if (l.productId) arrived.add(l.productId);
+    const nm = String(l.name || '').trim();
+    if (nm) arrived.add('name:' + nm);
+  }));
+  return items.filter(it => {
+    const key = orderItemKey(it);
+    if (key && arrived.has(key)) return false;
+    const nm = String((it && it.name) || '').trim();
+    return !(nm && arrived.has('name:' + nm));
+  });
+}
+
 // ===== מסך היסטוריה =====
 function renderHistory() {
   if (!history.length) {
@@ -2351,21 +2404,44 @@ function renderHistory() {
     return;
   }
   app.innerHTML = '<div class="flex items-center justify-between px-1 py-2"><h2 class="font-black text-2xl text-slate-800">היסטוריית הזמנות</h2><button data-role="clear-history" class="btn-tap text-xs font-bold text-red-500 bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1.5"><i class="fa-solid fa-trash-can"></i> נקה הכל</button></div>' +
-    history.map(o => {
+    history.map((o, idx) => {
       const d = new Date(o.timestamp);
       const dateStr = d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' });
       const timeStr = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-      const items = (o.items || []).map(it => '<li class="flex justify-between items-center text-sm border-b border-slate-100 pb-2 last:border-0"><span class="font-medium text-slate-700">' + it.name + '</span><span class="font-black bg-slate-100 px-2 rounded">' + it.amount + ' ' + it.unit + '</span></li>').join('');
+      const missing = orderMissingItems(idx);
+      const missingKeys = new Set((missing || []).map(orderItemKey));
+      const items = (o.items || []).map(it => {
+        const gone = missingKeys.has(orderItemKey(it));
+        return '<li class="flex justify-between items-center gap-2 text-sm border-b border-slate-100 pb-2 last:border-0">' +
+          '<span class="font-medium ' + (gone ? 'text-rose-700' : 'text-slate-700') + ' min-w-0">' + htmlEscape(it.name) +
+            (gone ? ' <span class="text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded whitespace-nowrap">לא הגיע</span>' : '') +
+          '</span>' +
+          '<span class="font-black bg-slate-100 px-2 rounded shrink-0">' + htmlEscape(it.amount) + ' ' + htmlEscape(it.unit) + '</span></li>';
+      }).join('');
+      // ריבוע קטן ליד מספר הפריטים. אין תעודה עדיין = אין ריבוע בכלל.
+      const badge = missing == null ? ''
+        : (missing.length
+          ? '<div class="bg-rose-100 text-rose-700 font-black px-2.5 py-1 rounded-full text-xs shrink-0">' + missing.length + ' לא ' + (missing.length === 1 ? 'הגיע' : 'הגיעו') + '</div>'
+          : '<div class="bg-green-100 text-green-700 font-black px-2.5 py-1 rounded-full text-xs shrink-0"><i class="fa-solid fa-check"></i> הכל הגיע</div>');
+      const missingBlock = (missing && missing.length)
+        ? '<div class="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3">' +
+            '<div class="text-xs font-black text-rose-700 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> הוזמן ולא הגיע</div>' +
+            '<ul class="space-y-1">' + missing.map(it => '<li class="text-sm font-bold text-rose-800">· ' + htmlEscape(it.name) + '</li>').join('') + '</ul>' +
+            '<div class="text-[10px] font-bold text-rose-500 mt-2">לפי תעודות הקליטה שנקלטו אחרי ההזמנה. כמות חלקית נחשבת "הגיע".</div>' +
+          '</div>'
+        : '';
       return '<details class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-3">' +
         '<summary class="select-none p-4 flex items-center justify-between gap-2">' +
           '<div class="flex items-center gap-3 min-w-0">' +
             '<i class="hist-chevron fa-solid fa-chevron-down text-slate-400 text-sm"></i>' +
             '<div class="min-w-0"><div class="font-black text-slate-800">' + dateStr + ' · ' + timeStr + '</div>' +
-            '<div class="text-sm text-slate-500 truncate"><i class="fa-solid fa-check text-green-500"></i> נשלח אל: ' + (o.sentTo || '') + '</div></div>' +
+            '<div class="text-sm text-slate-500 truncate"><i class="fa-solid fa-check text-green-500"></i> נשלח אל: ' + htmlEscape(o.sentTo || '') + '</div></div>' +
           '</div>' +
-          '<div class="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-full text-sm shrink-0">' + ((o.items || []).length) + ' פריטים</div>' +
+          '<div class="flex items-center gap-1.5 shrink-0">' + badge +
+            '<div class="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-full text-sm shrink-0">' + ((o.items || []).length) + ' פריטים</div>' +
+          '</div>' +
         '</summary>' +
-        '<div class="px-4 pb-4"><ul class="space-y-2 border-t border-slate-100 pt-3">' + items + '</ul>' +
+        '<div class="px-4 pb-4 border-t border-slate-100 pt-3">' + missingBlock + '<ul class="space-y-2">' + items + '</ul>' +
           '<button data-role="resend" data-id="' + o.id + '" class="btn-tap mt-3 w-full bg-green-50 text-green-700 font-black py-2.5 rounded-xl flex items-center justify-center gap-2"><i class="fa-brands fa-whatsapp"></i> שלח שוב</button>' +
         '</div>' +
       '</details>';
@@ -3226,6 +3302,8 @@ function toggleUnit(id, btn) {
 // ===== שליחה =====
 function orderedItems() {
   return products.filter(p => !p.hidden && parseInt(orderState[p.id] && orderState[p.id].amount, 10) > 0).map(p => ({
+    // v285: מזהה המוצר נשמר בהזמנה כדי שההשוואה מול הקליטה לא תישבר על שינוי שם.
+    productId: p.id,
     name: p.name, amount: parseInt(orderState[p.id].amount, 10),
     unit: (orderState[p.id].unit === 'unit') ? 'יחידות' : 'ארגזים'
   }));
@@ -3282,7 +3360,14 @@ function openSendCurrent() {
   renderSendModal(items, 'סיכום הזמנה', 'order');
 }
 function openResend(order) {
-  const items = (order.items || []).map(i => ({ name: i.name, amount: i.amount, unit: i.unit }));
+  // v285: שליחה חוזרת נשמרת כהזמנה חדשה בהיסטוריה — לכן היא חייבת לשמר את
+  // productId, אחרת הרשומה החדשה תיוולד בלי מזהים ותיבדק רק לפי שם.
+  const items = (order.items || []).map(i => {
+    const it = { name: i.name, amount: i.amount, unit: i.unit };
+    const pid = orderItemKey(i);
+    if (pid && pid.indexOf('name:') !== 0) it.productId = pid;
+    return it;
+  });
   if (!items.length) return;
   sendCtx = { type: 'order', items, resetCurrent: false };
   renderSendModal(items, 'שליחה חוזרת', 'order');
