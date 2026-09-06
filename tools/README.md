@@ -55,10 +55,15 @@ node tools/verify.js backup.json out.json
 שורות) ומריצות אותו — כך שהן נופלות אם הלוגיקה משתנה, ולא רק אם ההעתק מתיישן.
 
 ```
+node tools/order-paste-test.js תיקייה           # פענוח דף הזמנה מהספק (v321)
 node tools/ask-qty-test.js                      # שאלת הכמות בסימון "הוזמן באפליקציה" (v320)
 node tools/promo-sku-test.js                    # קליטת מק"טים מדף המבצעים (v317)
 node tools/past-chips-test.js גיבוי.json        # צ׳יפים של "סימנת בעבר" (v318)
 ```
 
-`past-chips-test.js` צריך גיבוי אמיתי — הוא אינו בריפו, ולכן הנתיב מגיע
-כארגומנט או במשתנה `BACKUP`. בלעדיו הבדיקה מדלגת ולא נכשלת.
+שתי בדיקות צריכות נתונים אמיתיים שאינם בריפו (גיבוי החנות ודפי הזמנה
+מהספק), ולכן הנתיב מגיע כארגומנט — `BACKUP` ו-`SAMPLES` בהתאמה. בלעדיו
+`past-chips` מדלגת לגמרי, ו-`order-paste` מריצה את הבדיקות המובנות בלבד.
+
+תיקיית הדוגמאות של `order-paste-test.js` מצפה ל-`backup-with-sku.json`
+ולקבצי `order-paste.txt` / `order1.txt` / `order2.txt` / `catalog.txt`.

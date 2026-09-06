@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v320 סימון באפליקציה שואל כמה ארגזים</title>
+    <title>הזמנות יטבתה - v321 הדבקת הזמנה שלמה משטראוס</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v320 סימון באפליקציה שואל כמה ארגזים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v321 הדבקת הזמנה שלמה משטראוס</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -2735,13 +2735,18 @@ function askAppOrderQty(key, name, fromOrderId, fromSearch) {
   m.classList.remove('hidden'); m.classList.add('flex');
   buzz(12);
 }
-// כתיבת הסימון עצמו — משותף לשאלת הכמות ולכל נתיב סימון אחר
-function markAppOrder(key, name, fromOrderId, amount, fromSearch) {
+// כתיבת הרשומה בלבד, בלי שמירה ובלי ציור מחדש — כדי שסימון של הזמנה
+// שלמה בבת אחת (v321) לא יבנה מחדש את המסך 28 פעמים
+function writeAppOrder(key, name, fromOrderId, amount) {
   const qty = Math.max(1, Number(amount) || 1);
   // v300: סימון מחדש מחליף רשומה ישנה של אותו מוצר — למשל כזאת שסומנה
   // "לא הגיע" — כדי שלא יישארו שתי רשומות לאותו מוצר
   appOrders = (appOrders || []).filter(x => !(x && x.key === key));
   appOrders = appOrders.concat([{ key: key, name: name || '', amount: qty, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
+}
+// כתיבת הסימון עצמו — משותף לשאלת הכמות ולכל נתיב סימון אחר
+function markAppOrder(key, name, fromOrderId, amount, fromSearch) {
+  writeAppOrder(key, name, fromOrderId, amount);
   if (fromSearch) appSearch = '';
   saveAppOrders();
   buzz(18);
@@ -3287,6 +3292,252 @@ function renderHistory() {
     }).join('');
 }
 
+// ===== v321: הדבקת הזמנה שלמה מאפליקציית הספק =====
+// הדרך המהירה ביותר לסמן הזמנה: פותחים את ההזמנה באפליקציית שטראוס,
+// בוחרים הכל, מעתיקים, ומדביקים כאן. המק"ט בדף ההזמנה הוא בדיוק המק"ט
+// ששמור אצלנו בכרטיס המוצר, ולכן הזיהוי מוחלט — בלי ניקוד שמות, בלי
+// משקל ובלי מחיר. הכמות ("N קרטונים") נלקחת כמו שהיא, וזה בדיוק מה
+// שהסימון צריך מאז v320.
+//
+// המבנה שהספק מדפיס לכל מוצר קבוע:
+//   שם המוצר / שם המוצר (שוב) / מק"ט / משקל / N יח׳ בקרטון /
+//   N קרטונים / ₪ מחיר... / מחיר לקרטון ₪ ...
+// לפני חלק מהמוצרים יש תווית ("15% הנחה", "מוצר חדש"), ולכן השם נלקח
+// מהשורה הראשונה מעל המק"ט שאינה תווית ואינה מתחילה בספרה.
+//
+// דרישת "N קרטונים" היא גם השומר: במסך הקטלוג הכמות היא 0 או בורר פתוח,
+// ולכן הדבקה של המסך הלא נכון פשוט לא מחזירה כלום במקום לייצר זבל.
+const PASTE_SKU_RE = /^\d{5,8}$/;
+function pasteCleanLine(s) {
+  // סימוני כיווניות ורווחים בלתי-נראים שמגיעים מהעתקה מדפדפן —
+  // בלעדיהם שורת מק"ט לא הייתה נראית כמו ספרות בלבד
+  return String(s == null ? '' : s)
+    .replace(/[\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\u00AD]/g, '')
+    .replace(/[\u00A0\u2007\u202F]/g, ' ')
+    .trim();
+}
+function parseSupplierOrder(txt) {
+  const lines = String(txt || '').split(/\r?\n/).map(pasteCleanLine);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!PASTE_SKU_RE.test(lines[i])) continue;
+    // הכמות חייבת לשבת בין המק"ט הזה למק"ט הבא, אחרת היא של מוצר אחר
+    let qty = 0;
+    for (let j = i + 1; j < lines.length && j <= i + 12; j++) {
+      if (PASTE_SKU_RE.test(lines[j])) break;
+      if (/^\d+\s*יח[׳'"״]?\s*בקרטון$/.test(lines[j])) continue;   // זו תכולת הארגז, לא הכמות
+      const m = lines[j].match(/^(\d+)\s*קרטונים?$/);
+      if (m) { qty = Number(m[1]); break; }
+    }
+    if (!qty) continue;
+    let name = '';
+    for (let j = i - 1; j >= 0 && j >= i - 4; j--) {
+      const s = lines[j];
+      if (!s || s === 'מוצר חדש' || /^\d/.test(s)) continue;        // "15% הנחה" מתחיל בספרה
+      name = s; break;
+    }
+    out.push({ sku: lines[i], name: name, qty: qty });
+  }
+  // אותו מק"ט פעמיים בהדבקה — מחברים כמויות ולא דורסים
+  const merged = [];
+  out.forEach(it => {
+    const prev = merged.find(x => x.sku === it.sku);
+    if (prev) prev.qty += it.qty; else merged.push(it);
+  });
+  return merged;
+}
+// ההצלבה מול המאגר. was = הכמות שכבר מסומנת עכשיו, כדי שהתצוגה תראה
+// "היה 1 ← 2" ולא תיראה כאילו כלום לא קרה
+function analyzeOrderPaste(txt) {
+  const items = parseSupplierOrder(txt);
+  const hit = [], miss = [];
+  items.forEach(it => {
+    const p = findProductBySku(it.sku, null);
+    if (!p) { miss.push(it); return; }
+    hit.push({
+      sku: it.sku, qty: it.qty, id: p.id, name: p.name || '',
+      supplierName: it.name, hidden: !!p.hidden,
+      was: appOrderQtyOf(appOrdersFor(p.id))
+    });
+  });
+  return { items: items, hit: hit, miss: miss };
+}
+
+let orderPaste = null;   // { step: 'input' | 'preview', text, hit, miss, attach, attachQ }
+
+function orderPasteReanalyze() {
+  const r = analyzeOrderPaste(orderPaste.text);
+  orderPaste.hit = r.hit;
+  orderPaste.miss = r.miss;
+}
+function openOrderPaste() { orderPaste = { step: 'input', text: '', hit: [], miss: [], attach: null, attachQ: '' }; renderAppOrders(); }
+function closeOrderPaste() { orderPaste = null; renderAppOrders(); }
+function analyzeOrderPasteFromBox() {
+  const box = document.querySelector('#app [data-role="paste-text"]');
+  const txt = box ? box.value : '';
+  if (!String(txt).trim()) { showToast('הדביקו קודם את דף ההזמנה', null, null, 2200); return; }
+  orderPaste.text = txt;
+  orderPasteReanalyze();
+  if (!orderPaste.hit.length && !orderPaste.miss.length) {
+    showToast('לא זוהתה אף שורת הזמנה — ודאו שהעתקתם את דף ההזמנה עצמו', null, null, 3600);
+    return;
+  }
+  orderPaste.step = 'preview';
+  buzz(12);
+  renderAppOrders();
+}
+function applyOrderPaste() {
+  const hit = (orderPaste && orderPaste.hit) || [];
+  if (!hit.length) return;
+  hit.forEach(h => writeAppOrder(h.id, h.name, '', h.qty));
+  saveAppOrders();
+  buzz(18);
+  const boxes = hit.reduce((a, h) => a + h.qty, 0);
+  logAction('app', 'הדבקת הזמנה מאפליקציית הספק', 'סומנו ' + hit.length + ' מוצרים · ' + boxes + ' ארגזים', { count: hit.length, boxes: boxes });
+  orderPaste = null;
+  renderAppOrders();
+  showToast('סומנו ' + hit.length + ' מוצרים · ' + boxes + ' ארגזים', null, null, 2800);
+}
+// שיוך מק"ט שלא זוהה למוצר קיים. זה מה שסוגר את המעגל: כל הדבקה משפרת
+// את הבאה אחריה, במקום להשאיר את אותם מוצרים חסרים לנצח.
+function startPasteAttach(sku) {
+  const it = (orderPaste.miss || []).find(x => x.sku === sku);
+  if (!it) return;
+  orderPaste.attach = { sku: sku, name: it.name || '' };
+  orderPaste.attachQ = it.name || '';
+  renderAppOrders();
+}
+function setPasteAttachQuery(val) {
+  orderPaste.attachQ = val || '';
+  const box = document.querySelector('#app [data-pasteres]');
+  if (box) box.innerHTML = pasteAttachResultsHtml();
+}
+function pasteAttachPick(productId) {
+  const at = orderPaste && orderPaste.attach; if (!at) return;
+  const p = products.find(x => x.id === productId); if (!p) return;
+  const clash = findProductBySku(at.sku, p.id);
+  if (clash) { showToast('המק״ט הזה כבר משויך ל' + (clash.name || 'מוצר אחר'), null, null, 3200); return; }
+  const cur = normalizeSku(p.sku);
+  if (cur && cur !== normalizeSku(at.sku)) {
+    showConfirm('החלפת מק״ט', 'ל"' + (p.name || '') + '" כבר יש מק״ט ' + cur + '. להחליף ב-' + at.sku + '?', 'החלף', () => savePasteAttach(p, at.sku));
+    return;
+  }
+  savePasteAttach(p, at.sku);
+}
+async function savePasteAttach(p, sku) {
+  const ok = await runCloudTaskSilent('save product sku', {
+    op: 'update', path: dataPath('products', p.id), data: { sku: sku },
+    operationId: makeOperationId('sku_' + p.id)
+  });
+  if (!ok) { showToast('לא הצלחתי לשמור את המק״ט — אין חיבור לענן', null, null, 3200); return; }
+  p.sku = sku;
+  searchTokenCache.clear();
+  logAction('import', 'שיוך מק"ט מהדבקת הזמנה', (p.name || '') + ' ← ' + sku, { productId: p.id, sku: sku });
+  buzz(18);
+  if (!orderPaste) return;
+  orderPaste.attach = null;
+  orderPaste.attachQ = '';
+  orderPasteReanalyze();          // עכשיו הוא יזוהה, ועובר מעצמו לרשימה הירוקה
+  renderAppOrders();
+  showToast('המק״ט נשמר · ' + (p.name || ''), null, null, 2400);
+}
+function pasteAttachResultsHtml() {
+  const q = (orderPaste && orderPaste.attachQ || '').trim();
+  if (!q) return '<div class="p-3 text-[11px] text-slate-400 text-center font-bold">חפשו את המוצר שאליו שייך המק״ט</div>';
+  const matches = appSearchMatches(q);
+  if (!matches.length) return '<div class="p-3 text-[11px] text-slate-400 text-center font-bold">לא נמצא מוצר</div>';
+  return matches.slice(0, 8).map(p =>
+    '<div class="p-2.5 border-b border-slate-100 last:border-0 flex items-start justify-between gap-2">' +
+      '<span class="min-w-0 flex-1"><span class="block font-bold text-slate-800 text-sm truncate">' + htmlEscape(p.name) + '</span>' +
+        barcodeChipHtml(p.barcode) + skuChipHtml(p.sku) + '</span>' +
+      '<button data-role="paste-attach-pick" data-id="' + htmlEscape(p.id) + '" class="btn-tap text-[10px] font-black text-white bg-blue-600 rounded-lg px-2.5 py-1.5 shrink-0 whitespace-nowrap mt-0.5">זה המוצר</button>' +
+    '</div>').join('');
+}
+function orderPasteHtml() {
+  if (!orderPaste) {
+    return '<button data-role="paste-open" class="btn-tap w-full bg-blue-600 text-white rounded-xl p-3 mb-3 text-right">' +
+      '<div class="font-black text-sm"><i class="fa-solid fa-paste"></i> הדבק הזמנה שלמה משטראוס</div>' +
+      '<div class="text-[11px] font-bold text-blue-100 mt-0.5">העתיקו את דף ההזמנה מאפליקציית הספק — המק״טים והכמויות ייקלטו לבד</div>' +
+    '</button>';
+  }
+  const head = '<div class="flex items-center justify-between gap-2 mb-2">' +
+      '<div class="font-black text-sm text-slate-700"><i class="fa-solid fa-paste text-blue-600"></i> הדבקת הזמנה משטראוס</div>' +
+      '<button data-role="paste-close" class="btn-tap text-slate-400 px-2 py-1"><i class="fa-solid fa-xmark"></i></button>' +
+    '</div>';
+
+  if (orderPaste.step === 'input') {
+    return '<div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">' + head +
+      '<div class="text-[11px] font-bold text-slate-500 mb-2">באפליקציית שטראוס: פתחו את ההזמנה, סמנו את כל הדף והעתיקו. הדביקו כאן — אני קורא את המק״טים ואת מספר הקרטונים.</div>' +
+      // הטקסט נשמר במצב ולא רק ב-DOM: עדכון מהענן יכול לצייר את המסך
+      // מחדש באמצע ההדבקה, ובלי זה מה שהודבק היה נעלם
+      '<textarea data-role="paste-text" rows="6" class="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-2.5 text-[12px] font-bold outline-none focus:border-blue-500" placeholder="הדביקו כאן את דף ההזמנה...">' + htmlEscape(orderPaste.text || '') + '</textarea>' +
+      '<button data-role="paste-analyze" class="btn-tap w-full mt-2 py-2.5 rounded-xl font-black text-white bg-blue-600"><i class="fa-solid fa-wand-magic-sparkles"></i> נתח את ההזמנה</button>' +
+    '</div>';
+  }
+
+  // --- מסך התצוגה המקדימה: שום דבר לא נכתב עד שלוחצים "סמן הכל"
+  const hit = orderPaste.hit || [], miss = orderPaste.miss || [];
+  const boxes = hit.reduce((a, h) => a + h.qty, 0);
+
+  const hitRows = hit.map(h => {
+    const changed = h.was > 0 && h.was !== h.qty;
+    return '<div class="flex items-start gap-2 py-1.5 border-b border-emerald-100 last:border-0">' +
+      '<i class="fa-solid fa-check text-emerald-500 text-[11px] mt-1 shrink-0"></i>' +
+      '<span class="min-w-0 flex-1">' +
+        '<span class="block text-sm font-bold text-slate-800 truncate">' + htmlEscape(h.name) + '</span>' +
+        '<span class="block text-[10px] font-bold text-slate-400 truncate">' + htmlEscape(h.supplierName || '') + ' · מק״ט ' + htmlEscape(h.sku) + '</span>' +
+        (h.hidden ? '<span class="inline-block text-[9px] font-black text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5">מוסתר אצלנו</span>' : '') +
+      '</span>' +
+      '<span class="shrink-0 text-[11px] font-black whitespace-nowrap mt-0.5 ' + (changed ? 'text-amber-600' : 'text-emerald-700') + '">' +
+        (changed ? h.was + ' ← ' : '') + h.qty + ' ' + (h.qty === 1 ? 'ארגז' : 'ארגזים') +
+      '</span>' +
+    '</div>';
+  }).join('');
+
+  const attach = orderPaste.attach;
+  const missRows = miss.map(m =>
+    '<div class="py-1.5 border-b border-amber-100 last:border-0">' +
+      '<div class="flex items-start gap-2">' +
+        '<i class="fa-solid fa-question text-amber-500 text-[11px] mt-1 shrink-0"></i>' +
+        '<span class="min-w-0 flex-1">' +
+          '<span class="block text-sm font-bold text-slate-700 truncate">' + htmlEscape(m.name || '(ללא שם)') + '</span>' +
+          '<span class="block text-[10px] font-bold text-slate-400">מק״ט ' + htmlEscape(m.sku) + ' · ' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</span>' +
+        '</span>' +
+        (attach && attach.sku === m.sku
+          ? '<button data-role="paste-attach-cancel" class="btn-tap shrink-0 text-[10px] font-black text-slate-500 bg-slate-100 rounded-lg px-2.5 py-1.5 mt-0.5">סגור</button>'
+          : '<button data-role="paste-attach" data-sku="' + htmlEscape(m.sku) + '" class="btn-tap shrink-0 text-[10px] font-black text-white bg-amber-500 rounded-lg px-2.5 py-1.5 whitespace-nowrap mt-0.5">שייך למוצר</button>') +
+      '</div>' +
+      (attach && attach.sku === m.sku
+        ? '<div class="mt-2">' +
+            '<input data-role="paste-attach-search" type="text" autocomplete="off" value="' + htmlEscape(orderPaste.attachQ || '') + '" placeholder="חפשו את המוצר אצלנו..." class="w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-blue-500">' +
+            '<div data-pasteres="1" class="bg-white border border-slate-200 rounded-xl overflow-hidden mt-1.5">' + pasteAttachResultsHtml() + '</div>' +
+          '</div>'
+        : '') +
+    '</div>').join('');
+
+  return '<div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">' + head +
+    '<div class="text-[11px] font-bold text-slate-500 mb-2">' +
+      'זוהו <b class="text-emerald-700">' + hit.length + '</b> מוצרים · ' + boxes + ' ארגזים' +
+      (miss.length ? ' · <b class="text-amber-600">' + miss.length + '</b> לא זוהו' : '') +
+    '</div>' +
+    (hit.length
+      ? '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 mb-2">' + hitRows + '</div>'
+      : '<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-[11px] font-bold text-slate-400 mb-2">אף מק״ט מההדבקה לא נמצא אצלנו</div>') +
+    (miss.length
+      ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-2">' +
+          '<div class="text-[11px] font-black text-amber-700 mb-1">מק״טים שלא מוכרים לנו — שייכו אותם פעם אחת והם ייקלטו לבד מכאן והלאה</div>' +
+          missRows +
+        '</div>'
+      : '') +
+    '<div class="flex gap-2">' +
+      '<button data-role="paste-close" class="btn-tap flex-1 py-2.5 rounded-xl font-black bg-slate-100 text-slate-500">ביטול</button>' +
+      (hit.length
+        ? '<button data-role="paste-apply" class="btn-tap flex-[2] py-2.5 rounded-xl font-black text-white bg-emerald-600"><i class="fa-solid fa-check"></i> סמן ' + hit.length + ' מוצרים</button>'
+        : '') +
+    '</div>' +
+  '</div>';
+}
+
 // ===== v318: מסך "הוזמן באפליקציה של יטבתה" =====
 // עד כה הפאנל ישב בתוך כרטיס ההזמנה האחרונה בהיסטוריה — שלוש פעולות
 // להגיע אליו, ודחוס בין רשימת הפריטים של ההזמנה ל"הוזמן ולא הגיע".
@@ -3300,10 +3551,13 @@ function renderHistory() {
 function renderAppOrders() {
   const last = history && history.length ? history[0] : null;
   if (!last) {
-    app.innerHTML = '<div class="text-center py-16 text-slate-400">' +
+    // ההדבקה (v321) אינה תלויה בהזמנה לנהג — היא באה מהספק — ולכן היא
+    // זמינה גם כאן, בעוד שאר המסך נשען על ההזמנה האחרונה
+    app.innerHTML = orderPasteHtml() +
+      '<div class="text-center py-16 text-slate-400">' +
       '<i class="fa-solid fa-mobile-screen text-5xl mb-4"></i>' +
       '<h3 class="font-black text-xl text-slate-600">אין עדיין הזמנה</h3>' +
-      '<div class="text-sm font-bold mt-2">המסך הזה נשען על ההזמנה האחרונה לנהג.<br>שדרו הזמנה אחת וחזרו לכאן.</div></div>';
+      '<div class="text-sm font-bold mt-2">רשימת החוסרים נשענת על ההזמנה האחרונה לנהג.<br>שדרו הזמנה אחת וחזרו לכאן.</div></div>';
     return;
   }
   const d = new Date(last.timestamp);
@@ -3328,6 +3582,7 @@ function renderAppOrders() {
       '<div class="text-[12px] font-bold text-slate-400 mt-1">מה שהזמנתם ישירות אצל הספק. הסימון צובע את המוצר באדום בהזמנה לנהג ויורד מהכמות, עד השידור הבא או קליטת סחורה.</div>' +
       '<div class="text-[11px] font-bold text-slate-500 mt-2"><i class="fa-solid fa-clock-rotate-left text-slate-300"></i> ההזמנה האחרונה לנהג · ' + dateStr + ' · ' + timeStr + '</div>' +
     '</div>' +
+    orderPasteHtml() +
     appPanelHtml(last.id) +
     appPastChipsHtml() +
     missingBlock;
@@ -17315,6 +17570,8 @@ app.addEventListener('input', (e) => {
   const t = e.target; const role = t.getAttribute && t.getAttribute('data-role');
   if (role === 'device-name') { setDeviceNameLocal(t.value); return; }
   if (role === 'app-search') { setAppSearch(t, t.value); return; } // v291
+  if (role === 'paste-attach-search') { setPasteAttachQuery(t.value); return; } // v321
+  if (role === 'paste-text') { if (orderPaste) orderPaste.text = t.value; return; }
   if (t.id === 'returnsSearch') { renderReturnsResults(t.value); return; }
   if (t.id === 'retDigits') { refreshReturnsDigits(t.value); return; }
   if (t.id === 'priceSearch') { priceQuery = t.value; refreshPricesList(priceQuery); return; }
@@ -17643,6 +17900,14 @@ app.addEventListener('click', (e) => {
   else if (role === 'app-plus') stepAppOrder(id, 1);
   else if (role === 'app-add') addAppOrderFromSearch(id); // v291: הוספה מהחיפוש
   else if (role === 'app-drop') dropAppOrder(id);         // v300: הסרה מרשימת "לא הגיע"
+  // v321: הדבקת הזמנה שלמה מאפליקציית הספק
+  else if (role === 'paste-open') openOrderPaste();
+  else if (role === 'paste-close') closeOrderPaste();
+  else if (role === 'paste-analyze') analyzeOrderPasteFromBox();
+  else if (role === 'paste-apply') applyOrderPaste();
+  else if (role === 'paste-attach') startPasteAttach(t.dataset.sku);
+  else if (role === 'paste-attach-cancel') { if (orderPaste) { orderPaste.attach = null; orderPaste.attachQ = ''; renderAppOrders(); } }
+  else if (role === 'paste-attach-pick') pasteAttachPick(id);
   else if (role === 'copy-barcode') copyBarcode(t.dataset.code); // v292
   else if (role === 'ret-add') addReturn(id);
   else if (role === 'ret-scan') openReturnsScanner();
