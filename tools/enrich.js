@@ -15,6 +15,14 @@ const rawText = fs.readFileSync(backupPath, 'utf8');
 const payload = JSON.parse(rawText);
 const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
 
+// הכרעות ידניות של החנות — ידע שאין בשום נתון ולכן אי אפשר לחשב אותו:
+// "חלב אדום" הוא 1%, "גמדים סקוואיז תכלת" הוא ארוחת בוקר תות. גובר על הכל.
+let OVERRIDES = {};
+try {
+  OVERRIDES = JSON.parse(fs.readFileSync(__dirname + '/sku-overrides.json', 'utf8'));
+  delete OVERRIDES._;
+} catch (e) { /* אין קובץ — ממשיכים בלי */ }
+
 // ===== ולידציה של מבנה הגיבוי — נכשלים ברעש, לא בשקט =====
 if (!payload || typeof payload !== 'object') throw new Error('גיבוי לא תקין');
 if (!payload.collections || typeof payload.collections !== 'object') throw new Error('אין collections בגיבוי');
@@ -137,21 +145,34 @@ function variantPenalty(p, c) {
 const filled = [], review = [], nomatch = [], already = [];
 let touched = 0;
 
-// שלב א: מועמדים לכל מוצר, אחרי סינון התנגשויות טעם
+const overridden = [];
+const bySku = new Map(catalog.map(c => [c.sku, c]));
+
+// שלב א: מועמדים לכל מוצר, אחרי סינון התנגשויות טעם.
+// מוצרים מוסתרים נכללים גם הם — הם קיימים במאגר וגם להם מגיע מק"ט — אבל
+// הם מקבלים עדיפות נמוכה בשיוך, כדי שלא יחטפו מק"ט ממוצר פעיל.
 const pending = [];
 for (const id of Object.keys(productDocs)) {
   const p = productDocs[id];
   if (!p || typeof p !== 'object') continue;
-  if (p.hidden) continue;                            // מוצרים מוסתרים — לא נוגעים
   const existing = String(p.sku == null ? '' : p.sku).replace(/\D/g, '');
   if (existing) { already.push({ id, name: p.name, sku: existing }); continue; }
+
+  const forced = OVERRIDES[String(p.name || '').trim()];
+  if (forced) {
+    const c = bySku.get(String(forced));
+    p.sku = String(forced);                          // === כתיבה: sku בלבד ===
+    touched++;
+    overridden.push({ id, name: p.name, sku: String(forced), matched: c ? c.name : '(לא בקטלוג)' });
+    continue;
+  }
 
   const ranked = catalog.map(c => {
     const base = score(p, c);
     const pen = variantPenalty(p, c);
     return { c, s: base.s - pen, base: base.s, why: pen ? base.why.concat('טעם?') : base.why };
   }).sort((a, b) => b.s - a.s);
-  pending.push({ id, p, ranked });
+  pending.push({ id, p, ranked, hidden: !!p.hidden });
 }
 
 // שלב ב: שיוך גלובלי — מק"ט אחד שייך למוצר אחד בלבד.
@@ -159,8 +180,12 @@ for (const id of Object.keys(productDocs)) {
 // והמפסיד נשאר בלי — למרות שיש לו מועמד נכון משלו ברשימה.
 const pairs = [];
 pending.forEach(entry => entry.ranked.slice(0, 6).forEach(r => pairs.push({ entry, r })));
-pairs.sort((x, y) => y.r.s - x.r.s);
+// פעילים לפני מוסתרים, ובתוך כל קבוצה לפי ניקוד. מוצר שנמכר היום קודם
+// לגרסה ישנה שלו שהוסתרה — אחרת המוסתר היה חוטף את המק"ט והפעיל נשאר ריק.
+pairs.sort((x, y) => (x.entry.hidden - y.entry.hidden) || (y.r.s - x.r.s));
 const takenSku = new Set(), takenProd = new Set();
+// מק"ט שנקבע ידנית תפוס מראש — אף מוצר אחר לא יקבל אותו
+overridden.forEach(o => takenSku.add(o.sku));
 const assigned = new Map();
 pairs.forEach(({ entry, r }) => {
   if (takenProd.has(entry.id) || takenSku.has(r.c.sku)) return;
@@ -194,11 +219,12 @@ const ambiguous = review;
 
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
 fs.writeFileSync(outPath.replace(/\.json$/, '') + '-report.json',
-  JSON.stringify({ filled, ambiguous, nomatch, already }, null, 1));
+  JSON.stringify({ filled, overridden, ambiguous, nomatch, already }, null, 1));
 
 const total = Object.keys(productDocs).length;
 console.log('מוצרים בגיבוי        :', total);
 console.log('כבר היה להם מק"ט    :', already.length);
+console.log('נקבעו ידנית         :', overridden.length);
 console.log('מולאו אוטומטית      :', filled.length);
 console.log('דו-משמעיים (לך)     :', ambiguous.length);
 console.log('לא נמצאה התאמה      :', nomatch.length);
