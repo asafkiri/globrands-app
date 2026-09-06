@@ -131,6 +131,16 @@ check('ללא סימון קיים — הכל חדש', a.hit.map(h => h.status), 
 a = build(P, { p1: 0 }).analyze(paste2);
 check('סימון לא פעיל נחשב חדש', a.hit[0].status, 'new');
 
+// --- המצב האמיתי בשטח: סימנתי חלק, ואז הדבקתי את כל ההזמנה
+const P3 = P.concat([{ id: 'p3', name: 'מילקי', sku: '365349' }]);
+const paste3 = paste2 + '\n' + block('מילקי בטעם פסק זמן', '365349', 24, 1);
+const mixed = build(P3, { p1: 1, p2: 9 });      // p1 נכון · p2 בכמות שגויה · p3 לא מסומן
+a = mixed.analyze(paste3);
+check('תערובת — כל שורה מסווגת נכון', a.hit.map(h => h.status), ['same', 'changed', 'new']);
+check('תערובת — נכתבים רק מה שחסר ומה שהשתנה',
+  mixed.willWrite(a.hit).map(h => h.id), ['p2', 'p3']);
+check('תערובת — מה שכבר נכון לא נגע', mixed.willWrite(a.hit).some(h => h.id === 'p1'), false);
+
 
 // ===== מול דפי ההזמנה האמיתיים, אם יש =====
 const dir = process.argv[2] || process.env.SAMPLES;
@@ -170,6 +180,24 @@ if (dir && fs.existsSync(dir)) {
         console.log('   הדבקה חוזרת על ' + draft.length + ' סימונים קיימים · ' +
           're.hit=' + re.hit.length + ' · ייכתבו: ' + willWrite.length);
         check('הדבקה חוזרת של הזמנה שכבר מסומנת אינה כותבת כלום', willWrite.length, 0);
+
+        // --- סימון חלקי: משאירים מחצית מהסימונים ומדביקים את כל ההזמנה.
+        //     מה שנכתב חייב להיות בדיוק מה שאינו מסומן נכון — לא פחות ולא יותר.
+        const keys = Object.keys(marks);
+        const half = {};
+        keys.slice(0, Math.floor(keys.length / 2)).forEach(k => { half[k] = marks[k]; });
+        if (keys.length) half[keys[0]] = marks[keys[0]] + 3;      // ואחד בכמות שגויה
+        const partApi = build(prods, half);
+        const part = partApi.analyze(fs.readFileSync(pasteFile, 'utf8'));
+        const partWrite = partApi.willWrite(part.hit);
+        const expect = part.hit.filter(h => (half[h.id] || 0) !== h.qty).map(h => h.id).sort();
+        console.log('   סימון חלקי (' + Object.keys(half).length + ' מסומנים) · חדשים ' +
+          part.hit.filter(h => h.status === 'new').length + ' · עדכון כמות ' +
+          part.hit.filter(h => h.status === 'changed').length + ' · ללא שינוי ' +
+          part.hit.filter(h => h.status === 'same').length + ' · ייכתבו ' + partWrite.length);
+        check('סימון חלקי — נכתב בדיוק מה שאינו מסומן נכון', partWrite.map(h => h.id).sort(), expect);
+        check('סימון חלקי — לא נכתב כלום שכבר היה נכון',
+          partWrite.some(h => half[h.id] === h.qty), false);
       }
     }
   }
