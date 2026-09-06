@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v293 כפתור ההיסטוריה גדול ובולט בכותרת</title>
+    <title>הזמנות יטבתה - v294 הברקוד האחרון שהועתק נשאר מסומן</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v293 כפתור ההיסטוריה גדול ובולט בכותרת</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v294 הברקוד האחרון שהועתק נשאר מסומן</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -563,6 +563,8 @@ const APP_ORDERS_TS_KEY = 'yt_app_orders_ts';
 let appOrdersTimer = null;
 let appOrdersLocalTs = 0;
 let appSearch = '';               // v291: חיפוש מוצר להוספה לרשימת "הוזמן באפליקציה"
+const LAST_BARCODE_KEY = 'yt_last_barcode';
+let lastCopiedBarcode = '';       // v294: הברקוד האחרון שהועתק — מסומן ברשימה
 let appOrderCache = null;         // אינדקס הסימונים הפעילים — נבנה פעם אחת לכל רינדור
 
 // ===== מצב קליטת תעודות =====
@@ -1038,6 +1040,7 @@ function restoreReceiptDraft() {
 restoreDraft();
 restoreReturnsDraft();
 restoreAppOrders();
+restoreLastBarcode();
 restoreReceiptDraft();
 app.innerHTML = '<div class="text-center text-slate-500 font-bold py-20 animate-pulse">טוען נתונים...</div>';
 if (auth) {
@@ -2570,10 +2573,23 @@ function legacyCopy(text) {
     return ok;
   } catch (e) { return false; }
 }
+// v294: הברקוד האחרון שהועתק נשאר מסומן. חוזרים מאפליקציית הספק ורואים
+// מיד איפה עצרנו. נשמר מקומית כי זה סימן אישי למכשיר הזה, והוא חייב לשרוד
+// את היציאה מהאפליקציה — אייפון טוען את ה-PWA מחדש כשחוזרים אליה.
+function setLastCopiedBarcode(code) {
+  lastCopiedBarcode = String(code || '');
+  try { localStorage.setItem(LAST_BARCODE_KEY, lastCopiedBarcode); } catch (e) {}
+  refreshBarcodeChips();
+}
+function restoreLastBarcode() { try { lastCopiedBarcode = localStorage.getItem(LAST_BARCODE_KEY) || ''; } catch (e) {} }
+function refreshBarcodeChips() {
+  const els = document.querySelectorAll('#app [data-role="copy-barcode"]');
+  for (let i = els.length - 1; i >= 0; i--) els[i].outerHTML = barcodeChipHtml(els[i].dataset.code);
+}
 function copyBarcode(code) {
   code = String(code || '').trim();
   if (!code) { showToast('למוצר הזה אין ברקוד', null, null, 2200); return; }
-  const done = () => { buzz(18); showToast('הברקוד הועתק — הדבק בחיפוש של אפליקציית הספק', null, null, 2600); };
+  const done = () => { buzz(18); setLastCopiedBarcode(code); showToast('הברקוד הועתק — הדבק בחיפוש של אפליקציית הספק', null, null, 2600); };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(code).then(done).catch(() => {
       if (legacyCopy(code)) done(); else showToast('ההעתקה נכשלה — הברקוד: ' + code, null, null, 4000);
@@ -2584,8 +2600,13 @@ function copyBarcode(code) {
 }
 function barcodeChipHtml(code) {
   if (!code) return '<span class="text-[10px] font-bold text-slate-300"><i class="fa-solid fa-barcode"></i> ללא ברקוד</span>';
-  return '<button data-role="copy-barcode" data-code="' + htmlEscape(code) + '" class="btn-tap inline-flex items-center gap-1.5 text-[11px] font-black text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 mt-0.5">' +
-    '<i class="fa-solid fa-copy text-[10px] text-blue-600"></i><span dir="ltr">' + htmlEscape(code) + '</span></button>';
+  const last = !!lastCopiedBarcode && String(code) === lastCopiedBarcode;
+  return '<button data-role="copy-barcode" data-code="' + htmlEscape(code) + '" class="btn-tap inline-flex items-center gap-1.5 text-[11px] font-black rounded-lg px-2 py-1 mt-0.5 border ' +
+    (last ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'text-slate-600 bg-slate-100 border-slate-200') + '">' +
+    '<i class="fa-solid ' + (last ? 'fa-check' : 'fa-copy') + ' text-[10px] ' + (last ? 'text-white' : 'text-blue-600') + '"></i>' +
+    '<span dir="ltr">' + htmlEscape(code) + '</span>' +
+    (last ? '<span class="text-[9px] font-black bg-white/25 rounded px-1 py-0.5">הועתק אחרון</span>' : '') +
+  '</button>';
 }
 
 // ===== v291: חיפוש בראש הרשימה — כל מוצר במערכת, לא רק החוסרים =====
