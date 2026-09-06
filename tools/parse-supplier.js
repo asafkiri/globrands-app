@@ -81,13 +81,32 @@ function parseSupplierText(raw) {
 }
 
 // ===== מיזוג לפי מק"ט על פני כל ההדבקות =====
+// הקטלוג גובר על הזמנות, תמיד. הזמנה היא תצלום היסטורי: "משקה קאופרי"
+// הוזמן ב-22.07 במחיר מלא (127.20 לקרטון), ובקטלוג הוא היום ב-15% הנחה
+// (108.12, יחידה 9.01). מיזוג נאיבי שבו הקובץ האחרון דורס היה מוחק את
+// המחיר הנוכחי לטובת ההיסטורי — והמחיר הוא האות שמכריעה בהתאמת השמות.
+// לכן הזמנה רק משלימה שדות חסרים, ולעולם לא דורסת נתון מהקטלוג.
+const RANK = { catalog: 2, order: 1 };
+function mergeRow(prev, next) {
+  if (!prev) return Object.assign({}, next);
+  const strong = RANK[next.source] >= RANK[prev.source] ? next : prev;
+  const weak = strong === next ? prev : next;
+  const out = Object.assign({}, weak);
+  Object.keys(strong).forEach(k => {
+    const v = strong[k];
+    if (v !== null && v !== undefined && v !== '') out[k] = v;
+  });
+  // כמה הוזמן שייך להזמנה, לא לקטלוג — שומרים את הערך האחרון שנראה
+  if (next.qty != null) out.qty = next.qty;
+  return out;
+}
 const files = process.argv.slice(2);
 const store = new Map();
 const perFile = [];
 files.forEach(f => {
   const rows = parseSupplierText(fs.readFileSync(f, 'utf8'));
   let added = 0;
-  rows.forEach(r => { if (!store.has(r.sku)) added++; store.set(r.sku, Object.assign(store.get(r.sku) || {}, r)); });
+  rows.forEach(r => { if (!store.has(r.sku)) added++; store.set(r.sku, mergeRow(store.get(r.sku), r)); });
   perFile.push({ f: f.split('/').pop(), rows: rows.length, added, src: rows[0] && rows[0].source });
 });
 

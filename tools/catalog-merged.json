@@ -7,9 +7,9 @@
   "cartonUnits": 12,
   "cartonPrice": 100.44,
   "unitPrice": 8.37,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 8.37,
   "salePrice": null,
   "lineTotal": 100.44
  },
@@ -22,10 +22,10 @@
   "cartonPrice": 61.2,
   "unitPrice": 5.1,
   "source": "catalog",
-  "qty": null,
+  "qty": 4,
   "listPrice": 5.1,
   "salePrice": null,
-  "lineTotal": null
+  "lineTotal": 0
  },
  {
   "sku": "210334",
@@ -49,9 +49,9 @@
   "cartonUnits": 12,
   "cartonPrice": 94.92,
   "unitPrice": 7.91,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 7.91,
   "salePrice": null,
   "lineTotal": 94.92
  },
@@ -147,9 +147,9 @@
   "cartonUnits": 20,
   "cartonPrice": 44,
   "unitPrice": 2.2,
-  "source": "order",
+  "source": "catalog",
   "qty": 2,
-  "listPrice": null,
+  "listPrice": 2.2,
   "salePrice": null,
   "lineTotal": 88
  },
@@ -357,9 +357,9 @@
   "cartonUnits": 24,
   "cartonPrice": 49.44,
   "unitPrice": 2.06,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 2.06,
   "salePrice": null,
   "lineTotal": 49.44
  },
@@ -553,9 +553,9 @@
   "cartonUnits": 24,
   "cartonPrice": 67.44,
   "unitPrice": 2.81,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 2.81,
   "salePrice": null,
   "lineTotal": 67.44
  },
@@ -609,9 +609,9 @@
   "cartonUnits": 24,
   "cartonPrice": 77.04,
   "unitPrice": 3.21,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 3.21,
   "salePrice": null,
   "lineTotal": 77.04
  },
@@ -707,9 +707,9 @@
   "cartonUnits": 24,
   "cartonPrice": 65.28,
   "unitPrice": 2.72,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 2.72,
   "salePrice": null,
   "lineTotal": 65.28
  },
@@ -931,9 +931,9 @@
   "cartonUnits": 3,
   "cartonPrice": 50.1,
   "unitPrice": 16.7,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 16.7,
   "salePrice": null,
   "lineTotal": 50.1
  },
@@ -959,9 +959,9 @@
   "cartonUnits": 12,
   "cartonPrice": 47.52,
   "unitPrice": 3.96,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 3.96,
   "salePrice": null,
   "lineTotal": 47.52
  },
@@ -973,9 +973,9 @@
   "cartonUnits": 12,
   "cartonPrice": 47.52,
   "unitPrice": 3.96,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 3.96,
   "salePrice": null,
   "lineTotal": 47.52
  },
@@ -1015,9 +1015,9 @@
   "cartonUnits": 8,
   "cartonPrice": 31.68,
   "unitPrice": 3.96,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 3.96,
   "salePrice": null,
   "lineTotal": 31.68
  },
@@ -1086,10 +1086,10 @@
   "cartonPrice": 78.36,
   "unitPrice": 6.53,
   "source": "catalog",
-  "qty": null,
+  "qty": 5,
   "listPrice": 6.53,
   "salePrice": null,
-  "lineTotal": null
+  "lineTotal": 0
  },
  {
   "sku": "351247",
@@ -1099,9 +1099,9 @@
   "cartonUnits": 6,
   "cartonPrice": 78.36,
   "unitPrice": 13.06,
-  "source": "order",
-  "qty": 8,
-  "listPrice": null,
+  "source": "catalog",
+  "qty": 5,
+  "listPrice": 13.06,
   "salePrice": null,
   "lineTotal": 78.36
  },
@@ -1127,9 +1127,9 @@
   "cartonUnits": 6,
   "cartonPrice": 29.16,
   "unitPrice": 4.86,
-  "source": "order",
+  "source": "catalog",
   "qty": 2,
-  "listPrice": null,
+  "listPrice": 4.86,
   "salePrice": null,
   "lineTotal": 29.16
  },
@@ -1141,9 +1141,9 @@
   "cartonUnits": 6,
   "cartonPrice": 29.16,
   "unitPrice": 4.86,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 4.86,
   "salePrice": null,
   "lineTotal": 29.16
  },
@@ -1184,10 +1184,10 @@
   "cartonPrice": 43.8,
   "unitPrice": 7.3,
   "source": "catalog",
-  "qty": null,
+  "qty": 1,
   "listPrice": 7.3,
   "salePrice": null,
-  "lineTotal": null
+  "lineTotal": 43.8
  },
  {
   "sku": "370738",
@@ -1197,9 +1197,9 @@
   "cartonUnits": 6,
   "cartonPrice": 43.8,
   "unitPrice": 7.3,
-  "source": "order",
+  "source": "catalog",
   "qty": 1,
-  "listPrice": null,
+  "listPrice": 7.3,
   "salePrice": null,
   "lineTotal": 43.8
  },
@@ -1520,10 +1520,10 @@
   "cartonPrice": 108.12,
   "unitPrice": 9.01,
   "source": "catalog",
-  "qty": null,
+  "qty": 1,
   "listPrice": 10.6,
   "salePrice": 9.01,
-  "lineTotal": null
+  "lineTotal": 10.6
  },
  {
   "sku": "370401",
@@ -3260,5 +3260,19 @@
   "listPrice": null,
   "salePrice": null,
   "lineTotal": 69.36
+ },
+ {
+  "sku": "371942",
+  "name": "מילקשייק תותים בקצפת 300 מ\"ל",
+  "badge": "",
+  "size": "315 גרם",
+  "cartonUnits": 6,
+  "cartonPrice": 30.54,
+  "unitPrice": 5.09,
+  "source": "order",
+  "qty": 1,
+  "listPrice": null,
+  "salePrice": null,
+  "lineTotal": 5.09
  }
 ]
