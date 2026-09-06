@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v304 ניתוח מוצרים סופר חזרות לפי מה שזוכה ואומת</title>
+    <title>הזמנות יטבתה - v305 חוזרים מהספק והאפליקציה שואלת אם הוזמן</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v304 ניתוח מוצרים סופר חזרות לפי מה שזוכה ואומת</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v305 חוזרים מהספק והאפליקציה שואלת אם הוזמן</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -332,6 +332,28 @@
         <div class="flex gap-2 p-4 pt-2">
           <button id="qty_cancel" class="btn-tap flex-1 py-3 rounded-xl font-black bg-slate-100 text-slate-500">ביטול</button>
           <button id="qty_done" class="btn-tap flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">סיום</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- v305: חזרת מאפליקציית הספק אחרי שהעתקת ברקוד — האפליקציה שואלת
+         מיד אם הזמנת, במקום שתחפש את השורה ברשימה בעצמך. -->
+    <div id="askOrderModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-4 z-[75]">
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="p-5 text-center">
+          <div class="flex items-center justify-center gap-2 mb-2"><i class="fa-solid fa-mobile-screen text-blue-600 text-xl"></i><h3 class="font-black text-lg text-slate-800">הזמנת באפליקציה של הספק?</h3></div>
+          <p id="askOrderName" class="text-slate-800 font-black text-base"></p>
+          <div id="askOrderCode" class="text-[11px] text-slate-400 font-bold mt-0.5" dir="ltr"></div>
+          <div class="flex items-center justify-center gap-3 mt-4">
+            <button id="askOrder_minus" class="btn-tap w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-2xl"><i class="fa-solid fa-minus"></i></button>
+            <div id="askOrderQty" class="w-24 h-16 flex items-center justify-center text-3xl font-black border-2 border-slate-200 rounded-2xl">1</div>
+            <button id="askOrder_plus" class="btn-tap w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-2xl"><i class="fa-solid fa-plus"></i></button>
+          </div>
+          <div class="text-[11px] font-bold text-slate-400 mt-1.5">ארגזים</div>
+        </div>
+        <div class="flex gap-2 p-4 pt-2">
+          <button id="askOrder_no" class="btn-tap flex-1 py-3 rounded-xl font-black bg-slate-100 text-slate-500">לא הזמנתי</button>
+          <button id="askOrder_yes" class="btn-tap flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">כן, הזמנתי</button>
         </div>
       </div>
     </div>
@@ -564,6 +586,8 @@ let appOrdersTimer = null;
 let appOrdersLocalTs = 0;
 let appSearch = '';               // v291: חיפוש מוצר להוספה לרשימת "הוזמן באפליקציה"
 const LAST_BARCODE_KEY = 'yt_last_barcode';
+const ASK_BARCODE_KEY = 'yt_ask_barcode';   // v305: ברקוד שממתין לשאלה "הזמנת?"
+let askBarcode = '', askProduct = null, askQty = 1, askChecked = false;
 let lastCopiedBarcode = '';       // v294: הברקוד האחרון שהועתק — מסומן ברשימה
 let appOrderCache = null;         // אינדקס הסימונים הפעילים — נבנה פעם אחת לכל רינדור
 
@@ -822,6 +846,9 @@ async function flushReturnsDraftToCloudNow(actionName) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && returnsDraftTimer) flushReturnsDraftToCloudNow('save returns draft');
   if (document.visibilityState === 'hidden' && appOrdersTimer) flushAppOrdersToCloudNow();
+  // v305: חזרנו לאפליקציה — אם הועתק ברקוד לפני היציאה, שואלים אם הוזמן.
+  // השהיה קצרה כדי שהמסך יספיק להיצבע לפני שהחלון קופץ.
+  if (document.visibilityState === 'visible') setTimeout(maybeAskAppOrder, 400);
 });
 window.addEventListener('pagehide', () => {
   if (returnsDraftTimer) flushReturnsDraftToCloudNow('save returns draft');
@@ -1041,6 +1068,7 @@ restoreDraft();
 restoreReturnsDraft();
 restoreAppOrders();
 restoreLastBarcode();
+restoreAskBarcode();
 restoreReceiptDraft();
 app.innerHTML = '<div class="text-center text-slate-500 font-bold py-20 animate-pulse">טוען נתונים...</div>';
 if (auth) {
@@ -1104,6 +1132,9 @@ function startListeners() {
     if (changed) saveDraftPassive();
     repainted.forEach(paintOrderUnitButtonById);
     rerender();
+    // v305: אייפון טוען את ה-PWA מחדש כשחוזרים אליה, ואז אין אירוע חזרה —
+    // השאלה חייבת לצאת גם אחרי שהמוצרים נטענו בפעם הראשונה
+    if (!askChecked) { askChecked = true; setTimeout(maybeAskAppOrder, 600); }
   }, console.error);
 
   const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'contacts');
@@ -2578,6 +2609,57 @@ function nextAppOrderStamp() {
   (appOrders || []).forEach(x => { const t = Number(x && x.at) || 0; if (t > max) max = t; });
   return Math.max(Date.now(), max + 1);
 }
+// ===== v305: "הזמנת באפליקציה של הספק?" בחזרה לאפליקציה =====
+// העתקת ברקוד היא הצהרת כוונה: מיד אחריה עוברים לאפליקציית הספק ומזמינים.
+// במקום שהמשתמש יחזור, יחפש את השורה ברשימה ארוכה ויסמן — האפליקציה
+// שואלת אותו ברגע החזרה. הברקוד שממתין לשאלה נשמר מקומית, כי אייפון טוען
+// את ה-PWA מחדש כשחוזרים אליה ובלי זה השאלה הייתה נעלמת בדיוק אז.
+function setAskBarcode(code) {
+  askBarcode = String(code || '');
+  try { localStorage.setItem(ASK_BARCODE_KEY, askBarcode); } catch (e) {}
+}
+function restoreAskBarcode() { try { askBarcode = localStorage.getItem(ASK_BARCODE_KEY) || ''; } catch (e) {} }
+function anyModalOpen() {
+  const els = document.querySelectorAll('body > div.fixed.inset-0');
+  for (let i = 0; i < els.length; i++) if (!els[i].classList.contains('hidden')) return true;
+  return false;
+}
+function maybeAskAppOrder() {
+  if (!askBarcode || !products.length || anyModalOpen()) return;
+  const code = askBarcode;
+  const p = products.find(x => String(x.barcode || '') === code);
+  // מוצר שלא נמצא, או שכבר מסומן — אין מה לשאול עליו
+  if (!p || appOrdersForProduct(p).length) { setAskBarcode(''); return; }
+  askProduct = p; askQty = 1;
+  const n = $('askOrderName'); if (n) n.textContent = p.name || '';
+  const c = $('askOrderCode'); if (c) c.textContent = code;
+  const q = $('askOrderQty'); if (q) q.textContent = '1';
+  const m = $('askOrderModal'); if (!m) return;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  buzz(12);
+}
+function hideAskOrder() {
+  const m = $('askOrderModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+  askProduct = null;
+}
+function stepAskQty(d) {
+  askQty = Math.max(1, askQty + d);
+  const q = $('askOrderQty'); if (q) q.textContent = String(askQty);
+}
+function answerAskOrder(ordered) {
+  const p = askProduct;
+  setAskBarcode('');
+  hideAskOrder();
+  if (!ordered || !p) return;
+  appOrders = (appOrders || []).filter(x => !(x && x.key === p.id));
+  appOrders = appOrders.concat([{ key: p.id, name: p.name || '', amount: askQty, at: nextAppOrderStamp(), fromOrderId: '' }]);
+  saveAppOrders();
+  buzz(18);
+  refreshAppOrderUi();
+  refreshAppNotArrived();
+  showToast('סומן · ' + askQty + ' ' + (askQty === 1 ? 'ארגז' : 'ארגזים'), null, null, 2000);
+}
+
 // ===== v292: העתקת ברקוד בלחיצה =====
 // הזרימה בשטח: רואים מוצר חסר, מעתיקים את הברקוד, מדביקים אותו בחיפוש של
 // אפליקציית הספק, מזמינים — וחוזרים לסמן. ה-Clipboard API לא תמיד זמין
@@ -2622,7 +2704,8 @@ function refreshBarcodeChips() {
 function copyBarcode(code) {
   code = String(code || '').trim();
   if (!code) { showToast('למוצר הזה אין ברקוד', null, null, 2200); return; }
-  const done = () => { buzz(18); setLastCopiedBarcode(code); showToast('הברקוד הועתק — הדבק בחיפוש של אפליקציית הספק', null, null, 2600); };
+  // v305: מסמנים גם שיש על מה לשאול כשחוזרים לאפליקציה
+  const done = () => { buzz(18); setLastCopiedBarcode(code); setAskBarcode(code); showToast('הברקוד הועתק — הדבק בחיפוש של אפליקציית הספק', null, null, 2600); };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(code).then(done).catch(() => {
       if (legacyCopy(code)) done(); else showToast('ההעתקה נכשלה — הברקוד: ' + code, null, null, 4000);
@@ -16589,6 +16672,11 @@ $('qty_minus').addEventListener('click', () => qtyStep(-1));
 $('qty_plus').addEventListener('click', () => qtyStep(1));
 $('qty_done').addEventListener('click', () => commitQty(false));
 $('qty_cancel').addEventListener('click', hideQty);
+// v305: "הזמנת באפליקציה של הספק?"
+$('askOrder_minus').addEventListener('click', () => stepAskQty(-1));
+$('askOrder_plus').addEventListener('click', () => stepAskQty(1));
+$('askOrder_yes').addEventListener('click', () => answerAskOrder(true));
+$('askOrder_no').addEventListener('click', () => answerAskOrder(false));
 $('mr_cancel').addEventListener('click', closeManualReturn);
 $('mr_add').addEventListener('click', addManualReturn);
 $('mr_price').addEventListener('input', updateManualReturnTotal);
