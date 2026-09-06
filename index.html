@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v296 מה שסומן אחרון מופיע בראש הרשימה</title>
+    <title>הזמנות יטבתה - v297 הסימונים נמחקים אחרי שידור ההזמנה לנהג</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v296 מה שסומן אחרון מופיע בראש הרשימה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v297 הסימונים נמחקים אחרי שידור ההזמנה לנהג</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3895,12 +3895,21 @@ function renderSendModal(items, titleNote, type) {
     return '<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-100 last:border-0"><span class="font-bold text-slate-700">' + i.name + '</span><span class="font-black text-blue-700 whitespace-nowrap">' + i.amount + ' ' + i.unit + '</span></div>';
   }).join('');
   // v288: תזכורת אחרונה — מוצרים שכבר הוזמנו באפליקציה ובכל זאת בהזמנה
-  const deds = (type === 'order' && sendCtx && sendCtx.resetCurrent) ? orderAppOrderedWarnings() : [];
+  const isNewOrder = (type === 'order' && sendCtx && sendCtx.resetCurrent);
+  const deds = isNewOrder ? orderAppOrderedWarnings() : [];
   const dedHtml = deds.length
     ? '<div class="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3">' +
         '<div class="font-black text-sm text-rose-800"><i class="fa-solid fa-mobile-screen"></i> ' + deds.length + ' מוצרים בהזמנה כבר הוזמנו באפליקציה</div>' +
         deds.map(x => '<div class="flex justify-between gap-2 text-[11px] font-bold text-rose-700 mt-1"><span class="min-w-0 truncate">' + htmlEscape(x.name) + '</span><span class="shrink-0 whitespace-nowrap">באפליקציה ' + x.app + ' · לנהג ' + x.amount + ' ' + x.unit + '</span></div>').join('') +
         '<div class="text-[10px] font-bold text-rose-500 mt-1.5">הכמות נשלחת כמו שהיא — ודא שזאת תוספת מכוונת ולא כפילות</div>' +
+      '</div>'
+    : '';
+  // v297: הנהג מביא בנסיעה אחת גם את מה שהוזמן באפליקציה של יטבתה וגם את
+  // ההזמנה הזאת — ולכן הסימונים מסיימים את תפקידם ברגע השליחה ונמחקים.
+  const marksCount = isNewOrder ? appActiveList().length : 0;
+  const marksHtml = marksCount
+    ? '<div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-3 text-[11px] font-bold text-slate-500">' +
+        '<i class="fa-solid fa-mobile-screen text-blue-600"></i> ' + marksCount + ' מוצרים מסומנים "הוזמן באפליקציה" — הסימון יימחק אחרי השליחה, כי הנהג מביא הכל יחד' +
       '</div>'
     : '';
   const gapNote = supplierGapWhatsappNote();
@@ -3914,6 +3923,7 @@ function renderSendModal(items, titleNote, type) {
   $('sendSummary').innerHTML =
     '<div class="mb-2 font-black text-slate-800">' + (titleNote || 'סיכום הזמנה') + ' · ' + items.length + ' פריטים</div>' +
     dedHtml +
+    marksHtml +
     gapReminderHtml +
     '<div class="bg-slate-50 rounded-xl p-3 max-h-40 overflow-y-auto border border-slate-100 mb-3">' + list + '</div>' +
     '<div class="mb-3"><input id="orderNote" type="text" placeholder="הערה (לא חובה)..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none text-sm bg-white"></div>' +
@@ -3989,6 +3999,14 @@ async function performSend(contact) {
     orderState = {};
     products.forEach(p => orderState[p.id] = { amount: '', unit: normalizeOrderUnit(p.defaultUnit) });
     try { localStorage.removeItem(ORDER_DRAFT_KEY); } catch (e) {}
+    // v297: הנהג מביא בנסיעה אחת את מה שהוזמן באפליקציה של יטבתה ואת ההזמנה
+    // הזאת — מרגע השידור הסימונים סיימו את תפקידם. הכתיבה לענן מיידית, כמו
+    // בטיוטת החזרות (v240): הטיימר המושהה לא שורד את המעבר לוואטסאפ.
+    if ((appOrders || []).length) {
+      appOrders = [];
+      saveAppOrders();
+      await flushAppOrdersToCloudNow();
+    }
   }
   sendCtx = null;
   hideSend();
