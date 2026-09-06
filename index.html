@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v312 יעד לרווח נמוך, אחיד בכל האפליקציות</title>
+    <title>הזמנות יטבתה - v313 שני כפתורי ניווט קבועים: היסטוריית הזמנות ותעודות</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -63,11 +63,28 @@
                באפליקציה"), ולכן הכפתור לבן, גדול ובולט לעומת שאר כפתורי הכותרת.
                בלי תווית: היא הייתה חותכת את שם האפליקציה ברוב מסכי האייפון.
                v307: הכפתורים "מצב כהה" ו"הערות" ירדו מהכותרת — הם לא היו בשימוש,
-               והמקום שהתפנה הולך כולו לכפתור ההיסטוריה. -->
-          <button id="btnHistory" class="btn-tap w-14 h-14 mx-0.5 rounded-2xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center shrink-0" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
-            <i class="fa-solid fa-clock-rotate-left text-2xl"></i>
-          </button>
+               והמקום שהתפנה הולך כולו לכפתור ההיסטוריה.
+               v313: כפתור ההיסטוריה ירד משורת הכותרת אל שורה משלו (navHistory)
+               יחד עם כפתור התעודות — ראה ההערה שם. -->
           <button id="btnSettings" class="btn-tap w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center border border-white/15" title="הגדרות"><i class="fa-solid fa-gear"></i></button>
+        </div>
+      </div>
+
+      <!-- v313: שני כפתורי ניווט קבועים, במקום כפתור שעון אחד שהוביל למקום אחר
+           בכל מסך (הזמנה → היסטוריית הזמנות, קליטה/ניהול → תעודות, חזרות →
+           היסטוריית חזרות). אי אפשר היה לדעת לאן הוא לוקח.
+           עכשיו: שתי מטרות = שני כפתורים רחבים עם תוויות, גלויים בכל המסכים.
+           היסטוריית החזרות לא אבדה — יש לה כפתור משלה בראש מסך החזרות. -->
+      <div id="navHistory" class="max-w-3xl mx-auto px-4 pb-2">
+        <div class="flex gap-2">
+          <button id="btnOrdersHistory" class="btn-tap flex-1 min-w-0 h-11 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
+            <i class="fa-solid fa-clock-rotate-left text-sm shrink-0"></i>
+            <span class="font-black text-[13px] truncate">היסטוריית הזמנות</span>
+          </button>
+          <button id="btnReceiptsHistory" class="btn-tap flex-1 min-w-0 h-11 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="תעודות קליטה" aria-label="תעודות קליטה">
+            <i class="fa-solid fa-file-invoice text-sm shrink-0"></i>
+            <span class="font-black text-[13px] truncate">תעודות קליטה</span>
+          </button>
         </div>
       </div>
 
@@ -103,7 +120,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v312 יעד לרווח נמוך, אחיד בכל האפליקציות</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v313 שני כפתורי ניווט קבועים: היסטוריית הזמנות ותעודות</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -1281,6 +1298,15 @@ function updateModeTabs() {
   c.className = base + (mainMode === 'receiving' ? act : off);
   if (m) m.className = base + (mainMode === 'manage' ? act : off);
 }
+// v313: הכפתור של המסך שאנחנו נמצאים בו נצבע כהה — כדי שיהיה ברור
+// שזה המסך הפתוח, ולא כפתור שממתין ללחיצה.
+function updateNavHistory() {
+  const o = $('btnOrdersHistory'), r = $('btnReceiptsHistory'); if (!o || !r) return;
+  const base = 'btn-tap flex-1 min-w-0 h-11 rounded-xl shadow-lg ring-1 flex items-center justify-center gap-1.5 px-1.5 ';
+  const act = 'bg-blue-800 text-white ring-white/40', off = 'bg-white text-blue-700 ring-blue-900/10';
+  o.className = base + (currentView === 'history' ? act : off);
+  r.className = base + (currentView === 'receiptsHistory' ? act : off);
+}
 function renderView() {
   const isOrder = currentView === 'order';
   const isReturns = currentView === 'returns';
@@ -1294,6 +1320,7 @@ function renderView() {
   document.body.classList.toggle('pb-28', isMain);
   document.body.classList.toggle('pb-10', !isMain);
   updateModeTabs();
+  updateNavHistory();
   if (isOrder) renderOrder();
   else if (isReturns) renderReturns();
   else if (isReceiving) renderReceiving();
@@ -16036,7 +16063,9 @@ $('shortCreditAmount').addEventListener('keydown', (e) => { if (e.key === 'Enter
 $('shortCreditModal').addEventListener('click', (e) => { if (e.target === $('shortCreditModal')) hideShortCreditPrompt(); });
 $('confirmOk').addEventListener('click', () => { const cb = confirmCb; hideConfirm(); if (cb) cb(); });
 $('brandHome').addEventListener('click', () => setView('order'));
-$('btnHistory').addEventListener('click', () => setView(mainMode === 'returns' ? 'returnsHistory' : ((mainMode === 'receiving' || mainMode === 'manage') ? 'receiptsHistory' : 'history')));
+// v313: כל כפתור מוביל תמיד לאותו מסך, בלי תלות במצב הנוכחי
+$('btnOrdersHistory').addEventListener('click', () => setView('history'));
+$('btnReceiptsHistory').addEventListener('click', () => setView('receiptsHistory'));
 $('segOrder').addEventListener('click', () => setView('order'));
 $('segReturns').addEventListener('click', () => setView('returns'));
 $('segReceiving').addEventListener('click', () => setView('receiving'));
