@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v289 סרגל החזרה עבר לכותרת — לא קופץ יותר בגלילה</title>
+    <title>הזמנות יטבתה - v290 סימון "הוזמן באפליקציה" לא סוגר את הרשימה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -120,7 +120,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v289 סרגל החזרה עבר לכותרת — לא קופץ יותר בגלילה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v290 סימון "הוזמן באפליקציה" לא סוגר את הרשימה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -839,6 +839,20 @@ async function flushAppOrdersToCloudNow() {
   return runCloudTaskSilent('save app orders', { op: 'set', path: dataPath('drafts', 'appOrders'), data: { items: appOrders, updatedAt: appOrdersLocalTs || Date.now() }, merge: true, operationId: 'app_orders' });
 }
 function restoreAppOrders() { try { const s = localStorage.getItem(APP_ORDERS_KEY); if (s) { const a = JSON.parse(s); if (Array.isArray(a)) appOrders = a; } appOrdersLocalTs = Number(localStorage.getItem(APP_ORDERS_TS_KEY)) || 0; } catch (e) {} }
+// חתימה יציבה לרשימה — לא תלויה בסדר השדות שהענן מחזיר
+function appOrdersSig(list) {
+  return JSON.stringify((Array.isArray(list) ? list : []).map(x => [
+    (x && x.key) || '', (x && x.name) || '', Number(x && x.amount) || 0, Number(x && x.at) || 0, (x && x.fromOrderId) || ''
+  ]));
+}
+// עדכון תצוגה אחרי שינוי שהגיע ממכשיר אחר או מניקוי אוטומטי
+function refreshAppOrderUi() {
+  if (currentView === 'history') { refreshAppRows(null); return; }
+  if (currentView === 'order') {
+    const a = document.activeElement;
+    if (!(a && app.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT'))) rerender();
+  }
+}
 function parseNoteVal(v) {
   let s = (v || '').toString().trim().replace(/\s/g, '').replace(/[^0-9.,]/g, '');
   if (!s) return null;
@@ -1161,18 +1175,16 @@ function startListeners() {
     if (snap.metadata.hasPendingWrites) return;
     const d = snap.data();
     if (!d || !Array.isArray(d.items)) return;
-    const incoming = JSON.stringify(d.items);
-    if (incoming === JSON.stringify(appOrders)) return;
+    // v290: ההשוואה חייבת להיות חסינה לסדר השדות — הענן מחזיר מפות ממוינות,
+    // ו-JSON.stringify גולמי היה מכריז "שינוי" על ההד של הכתיבה שלנו ובונה
+    // מחדש את המסך אחרי כל סימון.
+    if (appOrdersSig(d.items) === appOrdersSig(appOrders)) return;
     if (Number(d.updatedAt) && appOrdersLocalTs && Number(d.updatedAt) < appOrdersLocalTs) { saveAppOrders(); return; }
     appOrders = d.items;
     appOrdersLocalTs = Number(d.updatedAt) || Date.now();
     appOrderCache = null;
-    try { localStorage.setItem(APP_ORDERS_KEY, incoming); localStorage.setItem(APP_ORDERS_TS_KEY, String(appOrdersLocalTs)); } catch (e) {}
-    if (currentView === 'order' || currentView === 'history') {
-      const a = document.activeElement;
-      if (!(a && app.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT'))) rerender();
-    }
-    updateCart();
+    try { localStorage.setItem(APP_ORDERS_KEY, JSON.stringify(d.items)); localStorage.setItem(APP_ORDERS_TS_KEY, String(appOrdersLocalTs)); } catch (e) {}
+    refreshAppOrderUi();
   }, console.error);
 
   const rcRef = collection(db, 'artifacts', appId, 'public', 'data', 'receipts');
@@ -2524,6 +2536,22 @@ function appOrderDaysAgo(list) {
   const oldest = Math.min.apply(null, list.map(x => Number(x.at) || Date.now()));
   return Math.floor((Date.now() - oldest) / 86400000);
 }
+// v290: סימון מעדכן רק את השורה עצמה. rerender מלא היה בונה מחדש את המסך
+// וסוגר את כל כרטיסי ההזמנות — המשתמש הועף מהרשימה אחרי כל סימון, במקום
+// לקבוע כמות ולהמשיך לסמן.
+function refreshAppRows(key) {
+  const rows = document.querySelectorAll('#app [data-appkey]');
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const el = rows[i];
+    if (key != null && el.dataset.appkey !== key) continue;
+    el.outerHTML = appMissingRowHtml({
+      name: el.dataset.appname || '',
+      amount: el.dataset.appamount || '',
+      unit: el.dataset.appunit || '',
+      productId: (el.dataset.appkey || '').indexOf('name:') === 0 ? '' : el.dataset.appkey
+    }, el.dataset.appoid || '');
+  }
+}
 function toggleAppOrder(key, item, fromOrderId) {
   const had = (appOrders || []).some(x => x && x.key === key && !appOrderArrived(x));
   if (had) appOrders = appOrders.filter(x => !(x && x.key === key));
@@ -2535,9 +2563,7 @@ function toggleAppOrder(key, item, fromOrderId) {
   }
   saveAppOrders();
   buzz(had ? 8 : 18);
-  rerender();
-  updateCart();
-  if (!had) showToast('סומן — המוצר יופיע באדום בהזמנה', null, null, 2600);
+  refreshAppRows(key);
 }
 function stepAppOrder(key, delta) {
   const list = appOrdersFor(key); if (!list.length) return;
@@ -2546,8 +2572,8 @@ function stepAppOrder(key, delta) {
   if (next === 0) appOrders = appOrders.filter(x => x !== last);
   else last.amount = next;
   saveAppOrders();
-  rerender();
-  updateCart();
+  buzz(6);
+  refreshAppRows(key);
 }
 // סימון שהסחורה שלו הגיעה כבר עשה את שלו — יורד מהרשימה כדי שלא תתנפח
 function appOrdersSweep() {
@@ -2556,8 +2582,7 @@ function appOrdersSweep() {
   if (keep.length === appOrders.length) return;
   appOrders = keep;
   saveAppOrders();
-  if (currentView === 'order' || currentView === 'history') rerender();
-  updateCart();
+  refreshAppOrderUi();
 }
 
 // שורה ברשימת "הוזמן ולא הגיע": סימון בלחיצה אחת (הכמות נטענת מההזמנה
@@ -2566,20 +2591,23 @@ function appMissingRowHtml(it, orderId) {
   const key = orderItemKey(it);
   const marks = appOrdersFor(key);
   const marked = marks.length > 0;
+  // הנתונים נשמרים על השורה עצמה כדי שהיא תדע לצייר את עצמה מחדש אחרי
+  // סימון, בלי לבנות מחדש את כל המסך ולסגור את הכרטיסים הפתוחים
+  const data = ' data-appkey="' + htmlEscape(key) + '" data-appname="' + htmlEscape(it.name) + '" data-appamount="' + htmlEscape(it.amount) + '" data-appunit="' + htmlEscape(it.unit) + '" data-appoid="' + htmlEscape(orderId || '') + '"';
   const name = '<span class="text-sm font-bold ' + (marked ? 'text-slate-500 line-through decoration-slate-300' : 'text-rose-800') + ' min-w-0 truncate">' + htmlEscape(it.name) + '</span>';
-  const check = '<button data-role="app-mark" data-id="' + key + '" data-oid="' + (orderId || '') + '" class="btn-tap shrink-0 w-6 h-6 rounded-md flex items-center justify-center ' + (marked ? 'bg-emerald-500 text-white' : 'bg-white border-2 border-rose-300 text-transparent') + '"><i class="fa-solid fa-check text-[11px]"></i></button>';
+  const check = '<button data-role="app-mark" data-id="' + htmlEscape(key) + '" data-oid="' + htmlEscape(orderId || '') + '" class="btn-tap shrink-0 w-6 h-6 rounded-md flex items-center justify-center ' + (marked ? 'bg-emerald-500 text-white' : 'bg-white border-2 border-rose-300 text-transparent') + '"><i class="fa-solid fa-check text-[11px]"></i></button>';
   if (!marked) {
-    return '<div class="flex items-center gap-2" data-appkey="' + key + '">' + check + name +
-      '<button data-role="app-mark" data-id="' + key + '" data-oid="' + (orderId || '') + '" class="btn-tap mr-auto shrink-0 text-[10px] font-black text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-1"><i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה</button>' +
+    return '<div class="flex items-center gap-2"' + data + '>' + check + name +
+      '<button data-role="app-mark" data-id="' + htmlEscape(key) + '" data-oid="' + htmlEscape(orderId || '') + '" class="btn-tap mr-auto shrink-0 text-[10px] font-black text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-1"><i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה</button>' +
     '</div>';
   }
   const days = appOrderDaysAgo(marks);
   const late = days >= 3;
-  return '<div class="flex items-center gap-2 flex-wrap" data-appkey="' + key + '">' + check + name +
+  return '<div class="flex items-center gap-2 flex-wrap"' + data + '>' + check + name +
     '<span class="mr-auto shrink-0 flex items-center gap-1">' +
-      '<button data-role="app-minus" data-id="' + key + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
+      '<button data-role="app-minus" data-id="' + htmlEscape(key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
       '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + appOrderQtyText(marks) + '</span>' +
-      '<button data-role="app-plus" data-id="' + key + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
+      '<button data-role="app-plus" data-id="' + htmlEscape(key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
     '</span>' +
     '<span class="w-full text-[10px] font-bold ' + (late ? 'text-amber-600' : 'text-emerald-600') + ' pr-8">' +
       '<i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה' + (days > 0 ? ' לפני ' + days + ' ימים' + (late ? ' — ועדיין לא הגיע' : '') : ' היום') + ' · יופיע באדום בהזמנה' +
