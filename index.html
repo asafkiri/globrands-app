@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v319 בהיסטוריה — קודם ההזמנה ואז החוסרים</title>
+    <title>הזמנות יטבתה - v320 סימון באפליקציה שואל כמה ארגזים</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v319 בהיסטוריה — קודם ההזמנה ואז החוסרים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v320 סימון באפליקציה שואל כמה ארגזים</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -339,7 +339,7 @@
     <div id="askOrderModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-4 z-[75]">
       <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div class="p-5 text-center">
-          <div class="flex items-center justify-center gap-2 mb-2"><i class="fa-solid fa-mobile-screen text-blue-600 text-xl"></i><h3 class="font-black text-lg text-slate-800">הזמנת באפליקציה של הספק?</h3></div>
+          <div class="flex items-center justify-center gap-2 mb-2"><i class="fa-solid fa-mobile-screen text-blue-600 text-xl"></i><h3 id="askOrderTitle" class="font-black text-lg text-slate-800">הזמנת באפליקציה של הספק?</h3></div>
           <p id="askOrderName" class="text-slate-800 font-black text-base"></p>
           <div id="askOrderCode" class="text-[11px] text-slate-400 font-bold mt-0.5" dir="ltr"></div>
           <div class="flex items-center justify-center gap-3 mt-4">
@@ -589,6 +589,10 @@ let appSearch = '';               // v291: חיפוש מוצר להוספה לר
 const LAST_BARCODE_KEY = 'yt_last_barcode';
 const ASK_BARCODE_KEY = 'yt_ask_barcode';   // v305: ברקוד שממתין לשאלה "הזמנת?"
 let askBarcode = '', askProduct = null, askQty = 1, askChecked = false;
+// v320: הקשת הכמות משמשת גם לסימון ידני מתוך הרשימות. askMark מחזיק את
+// המוצר שסומן בלחיצה, ובזמן שהוא מלא החלון פועל במצב "כמה ארגזים" ולא
+// במצב "הזמנת?" של החזרה מאפליקציית הספק.
+let askMark = null;
 let lastCopiedBarcode = '';       // v294: הברקוד האחרון שהועתק — מסומן ברשימה
 let appOrderCache = null;         // אינדקס הסימונים הפעילים — נבנה פעם אחת לכל רינדור
 
@@ -2698,7 +2702,9 @@ function maybeAskAppOrder() {
   const p = products.find(x => String(x.barcode || '') === code);
   // מוצר שלא נמצא, או שכבר מסומן — אין מה לשאול עליו
   if (!p || appOrdersForProduct(p).length) { setAskBarcode(''); return; }
+  askMark = null;
   askProduct = p; askQty = 1;
+  askOrderTexts('הזמנת באפליקציה של הספק?', 'כן, הזמנתי', 'לא הזמנתי');
   const n = $('askOrderName'); if (n) n.textContent = p.name || '';
   const c = $('askOrderCode'); if (c) c.textContent = code;
   const q = $('askOrderQty'); if (q) q.textContent = '1';
@@ -2706,26 +2712,71 @@ function maybeAskAppOrder() {
   m.classList.remove('hidden'); m.classList.add('flex');
   buzz(12);
 }
+// ===== v320: שאלת הכמות בסימון ידני =====
+// סימון "הוזמן באפליקציה" נכנס עד עכשיו בשקט כארגז אחד, והשורה קפצה
+// מיד לרשימה שלמעלה. באפליקציית הספק מזמינים לא מעט 2 ו-3 ארגזים, ולכן
+// מי שהזמין יותר היה צריך לרדוף אחרי השורה שזזה ולתקן אותה ב-+. הקשת
+// הכמות שנבנתה ב-v305 לחזרה מאפליקציית הספק מתאימה כאן אחד לאחד: אותו
+// חלון, אותם +/−, רק הכותרת והכפתורים משתנים לפי מי פתח אותו.
+function askOrderTexts(title, yes, no) {
+  const t = $('askOrderTitle'); if (t) t.textContent = title;
+  const y = $('askOrder_yes'); if (y) y.textContent = yes;
+  const n = $('askOrder_no'); if (n) n.textContent = no;
+}
+function askAppOrderQty(key, name, fromOrderId, fromSearch) {
+  askProduct = null;
+  askMark = { key: key, name: name || '', fromOrderId: fromOrderId || '', fromSearch: !!fromSearch };
+  askQty = 1;
+  askOrderTexts('כמה ארגזים הזמנת?', 'סמן', 'ביטול');
+  const n = $('askOrderName'); if (n) n.textContent = name || '';
+  const c = $('askOrderCode'); if (c) c.textContent = barcodeForKey(key) || '';
+  const q = $('askOrderQty'); if (q) q.textContent = '1';
+  const m = $('askOrderModal'); if (!m) { markAppOrder(key, name, fromOrderId, 1, fromSearch); return; }
+  m.classList.remove('hidden'); m.classList.add('flex');
+  buzz(12);
+}
+// כתיבת הסימון עצמו — משותף לשאלת הכמות ולכל נתיב סימון אחר
+function markAppOrder(key, name, fromOrderId, amount, fromSearch) {
+  const qty = Math.max(1, Number(amount) || 1);
+  // v300: סימון מחדש מחליף רשומה ישנה של אותו מוצר — למשל כזאת שסומנה
+  // "לא הגיע" — כדי שלא יישארו שתי רשומות לאותו מוצר
+  appOrders = (appOrders || []).filter(x => !(x && x.key === key));
+  appOrders = appOrders.concat([{ key: key, name: name || '', amount: qty, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
+  if (fromSearch) appSearch = '';
+  saveAppOrders();
+  buzz(18);
+  refreshAppRows(key);
+  refreshAppPanels();
+  refreshAppNotArrived();
+}
 function hideAskOrder() {
   const m = $('askOrderModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
   askProduct = null;
+  askMark = null;
 }
 function stepAskQty(d) {
   askQty = Math.max(1, askQty + d);
   const q = $('askOrderQty'); if (q) q.textContent = String(askQty);
 }
 function answerAskOrder(ordered) {
-  const p = askProduct;
-  setAskBarcode('');
+  const p = askProduct, mark = askMark, qty = askQty;
   hideAskOrder();
+  // סימון ידני אינו נוגע בברקוד הממתין — הוא לא נפתח בגללו
+  if (mark) {
+    if (!ordered) return;
+    markAppOrder(mark.key, mark.name, mark.fromOrderId, qty, mark.fromSearch);
+    showToast('סומן · ' + qty + ' ' + (qty === 1 ? 'ארגז' : 'ארגזים'), null, null, 2000);
+    return;
+  }
+  setAskBarcode('');
   if (!ordered || !p) return;
   appOrders = (appOrders || []).filter(x => !(x && x.key === p.id));
-  appOrders = appOrders.concat([{ key: p.id, name: p.name || '', amount: askQty, at: nextAppOrderStamp(), fromOrderId: '' }]);
+  appOrders = appOrders.concat([{ key: p.id, name: p.name || '', amount: qty, at: nextAppOrderStamp(), fromOrderId: '' }]);
   saveAppOrders();
   buzz(18);
   refreshAppOrderUi();
   refreshAppNotArrived();
-  showToast('סומן · ' + askQty + ' ' + (askQty === 1 ? 'ארגז' : 'ארגזים'), null, null, 2000);
+  showToast('סומן · ' + qty + ' ' + (qty === 1 ? 'ארגז' : 'ארגזים'), null, null, 2000);
 }
 
 // ===== v292: העתקת ברקוד בלחיצה =====
@@ -3018,15 +3069,12 @@ function setAppSearch(el, val) {
   box.innerHTML = html;
   box.classList.toggle('hidden', !html);
 }
+// הוספה מהחיפוש ומצ׳יפ "סימנת בעבר" — אותה שאלת כמות כמו בסימון בשורה,
+// כדי שסימון יתנהג אותו דבר מכל מקום במסך (v320)
 function addAppOrderFromSearch(productId) {
   const p = products.find(x => x.id === productId); if (!p) return;
   if ((appOrderIndex()[p.id] || []).length) return;
-  appOrders = (appOrders || []).concat([{ key: p.id, name: p.name || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: '' }]);
-  appSearch = '';
-  saveAppOrders();
-  buzz(18);
-  refreshAppPanels();
-  refreshAppRows(p.id);
+  askAppOrderQty(p.id, p.name || '', '', true);
 }
 // v290: סימון מעדכן רק את השורה עצמה. rerender מלא היה בונה מחדש את המסך
 // וסוגר את כל כרטיסי ההזמנות — המשתמש הועף מהרשימה אחרי כל סימון, במקום
@@ -3046,17 +3094,15 @@ function refreshAppRows(key) {
 }
 function toggleAppOrder(key, item, fromOrderId) {
   const had = (appOrders || []).some(x => x && x.key === key && appOrderActive(x));
-  // v300: סימון מחדש מחליף רשומה ישנה של אותו מוצר — למשל כזאת שסומנה
-  // "לא הגיע" — כדי שלא יישארו שתי רשומות לאותו מוצר
+  // v320: סימון עובר קודם דרך שאלת הכמות. עד כאן הוא נכנס תמיד כארגז אחד
+  // (v295) — ברירת מחדל קבועה שנבחרה כדי שלא תהיה כמות "אקראית" מההזמנה
+  // הישנה — אבל אז השורה קפצה לרשימה שלמעלה והכמות האמיתית נשארה לתיקון
+  // ידני. שאלה אחת ברגע הלחיצה עדיפה על רדיפה אחרי שורה שזזה.
+  // ביטול סימון נשאר מיידי: אין מה לשאול על מחיקה.
+  if (!had) { askAppOrderQty(key, (item && item.name) || '', fromOrderId, false); return; }
   appOrders = (appOrders || []).filter(x => !(x && x.key === key));
-  if (!had) {
-    // v295: תמיד ארגז אחד. קודם הכמות נגזרה מההזמנה המקורית, ואז חלק
-    // מהמוצרים יצאו 2 וחלק 1 בלי שום סימן חיצוני למה — התנהגות שנראית
-    // אקראית. ברירת מחדל אחת וקבועה, ומי שצריך יותר מוסיף ב-+.
-    appOrders = appOrders.concat([{ key, name: (item && item.name) || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
-  }
   saveAppOrders();
-  buzz(had ? 8 : 18);
+  buzz(8);
   refreshAppRows(key);
   refreshAppPanels();
   refreshAppNotArrived();

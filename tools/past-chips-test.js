@@ -1,6 +1,9 @@
 // בודק את appPastList מול נתוני הגיבוי האמיתיים
+// הגיבוי עצמו אינו בריפו (נתוני חנות), ולכן הנתיב מגיע כארגומנט או ב-BACKUP:
+//   node tools/past-chips-test.js /נתיב/לגיבוי.json
 const fs = require('fs');
-const src = fs.readFileSync('/home/user/yotvata-app/index.html', 'utf8');
+const path = require('path');
+const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const grab = (a, b) => {
   const i = src.indexOf(a); if (i < 0) throw new Error('לא נמצא: ' + a);
   const j = src.indexOf(b, i); if (j < 0) throw new Error('לא נמצא סוף: ' + b);
@@ -8,7 +11,13 @@ const grab = (a, b) => {
 };
 const code = grab('function appPastList()', 'function appPastChipsHtml');
 
-const backup = require('./backup.json');
+const backupPath = process.argv[2] || process.env.BACKUP || path.join(__dirname, 'backup.json');
+if (!fs.existsSync(backupPath)) {
+  console.log('⏭  אין קובץ גיבוי (' + backupPath + ') — הבדיקה נדלגת.');
+  console.log('   הרצה: node tools/past-chips-test.js /נתיב/לגיבוי.json');
+  process.exit(0);
+}
+const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
 const prodDocs = backup.collections.products;
 const products = Object.entries(prodDocs).map(([id, p]) => Object.assign({ id }, p));
 const appOrders = (backup.collections.drafts.appOrders || {}).items || [];
