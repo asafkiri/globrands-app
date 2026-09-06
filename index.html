@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v288 הזמנה — סימון "הוזמן באפליקציה" מקזז מההזמנה לנהג</title>
+    <title>הזמנות יטבתה - v288 הזמנה — "הוזמן באפליקציה" מסמן את המוצר באדום</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -111,7 +111,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v288 הזמנה — סימון "הוזמן באפליקציה" מקזז מההזמנה לנהג</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v288 הזמנה — "הוזמן באפליקציה" מסמן את המוצר באדום</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -1378,22 +1378,19 @@ function buildOrderRow(p) {
   const _op = productActivePromo(p);
   const promoNote = _op ? ('<button data-role="promo-info" data-id="' + _op.id + '" class="btn-tap text-[10px] font-black text-rose-600 mt-0.5 flex items-center gap-1"><i class="fa-solid fa-tag"></i> מבצע ' + (Number(_op.pct) || 0) + '%' + (promoMinUnitsP(_op) > 1 ? ' · מ-' + promoMinLabelP(_op) + ' מהסל' : '') + ' <i class="fa-solid fa-circle-info opacity-70"></i></button>') : '';
   // v288: מוצר שכבר הוזמן באפליקציה — הכמות שתישלח לנהג מוצגת כאן, לא בהפתעה
-  const _aod = orderLineDeduction(p);
-  let appNote = '';
-  if (_aod.marks.length) {
-    const d = _aod;
-    appNote = '<div class="text-[10px] font-black mt-0.5 flex items-center gap-1 ' + (d.mismatch ? 'text-amber-600' : 'text-emerald-600') + '">' +
-      '<i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה · ' + appOrderSummaryOf(d.marks) +
-      (d.amount > 0
-        ? (d.mismatch
-          ? ' <span class="text-amber-700">· יחידת מידה שונה — לא מתקזז</span>'
-          : (d.net > 0 ? ' <span class="text-slate-500">· לנהג יישלחו ' + d.net + '</span>' : ' <span class="text-slate-500">· לא יישלח לנהג</span>'))
-        : '') +
-    '</div>';
-  }
+  // v288: מוצר שכבר הוזמן באפליקציה של יטבתה — השורה אדומה ומצוינת הכמות.
+  // אין קיזוז: המשתמש רואה מה כבר הוזמן ומחליט בעצמו כמה להוסיף מהנהג.
+  const _aoMarks = appOrdersForProduct(p);
+  const _aoDays = appOrderDaysAgo(_aoMarks);
+  const appNote = _aoMarks.length
+    ? '<div class="text-[11px] font-black text-rose-700 mt-0.5 flex items-center gap-1">' +
+        '<i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה · ' + appOrderQtyText(_aoMarks) +
+        (_aoDays > 0 ? ' <span class="font-bold text-rose-500">· לפני ' + _aoDays + ' ימים</span>' : '') +
+      '</div>'
+    : '';
   return (
     '<div id="row-' + p.id + '" data-id="' + p.id + '" data-name="' + safeName + '" class="row-card flex items-center gap-2 p-2.5 rounded-2xl border shadow-sm ' +
-      (sel ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100') + '">' +
+      (_aoMarks.length ? ('bg-rose-50 border-rose-300' + (sel ? ' ring-2 ring-blue-400' : '')) : (sel ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100')) + '">' +
       '<button data-role="rec" data-id="' + p.id + '" ' + (recOff ? 'disabled' : '') + ' class="btn-tap shrink-0 w-16 h-12 rounded-xl flex flex-col items-center justify-center leading-none ' +
         (recOff ? 'bg-slate-100 text-slate-300' : 'bg-blue-600 text-white shadow-md shadow-blue-500/20') + '">' +
         '<span class="text-[9px] font-bold opacity-80">מומלץ</span><span class="text-lg font-black">' + (recOff ? '—' : rec) + '</span>' +
@@ -1462,8 +1459,7 @@ function updateCart() {
   } else if (mainMode === 'receiving') {
     n = receiptList.length; label = 'סיים תעודה';
   } else {
-    // v288: מוצר שקוזז במלואו לא נשלח לנהג — ולכן גם לא נספר בכפתור
-    n = orderedItems().length;
+    n = products.reduce((a, p) => a + ((!p.hidden && parseInt(orderState[p.id] && orderState[p.id].amount, 10) > 0) ? 1 : 0), 0);
     label = 'סיום הזמנה';
   }
   $('cartCount').textContent = n;
@@ -2507,35 +2503,35 @@ function appOrdersForProduct(p) {
   const byName = appOrdersFor('name:' + String(p.name || '').trim());
   return byName.length ? byId.concat(byName) : byId;
 }
-// קיזוז רק ביחידת מידה זהה — בלי המרות ארגז/יחידה, כמו בבדיקת "לא הגיע"
-function appOrderedQtyIn(list, unitLabel) {
-  return (list || []).reduce((a, x) => a + (x.unit === unitLabel ? (Number(x.amount) || 0) : 0), 0);
+// באפליקציה של הספק מזמינים ארגזים בלבד — לכן הכמות כאן תמיד בארגזים,
+// ואין שום המרה ליחידות: ל-90% מהמוצרים לא מוזן כמה יש בארגז, והמרה
+// כזאת הייתה מייצרת הזמנות שגויות. הסימון מציין, לא מחשב.
+function appOrderQtyOf(list) {
+  return (list || []).reduce((a, x) => a + (Number(x.amount) || 0), 0);
 }
-function appOrderSummaryOf(list) {
-  const byUnit = {};
-  (list || []).forEach(x => { const u = x.unit || 'ארגזים'; byUnit[u] = (byUnit[u] || 0) + (Number(x.amount) || 0); });
-  return Object.keys(byUnit).map(u => byUnit[u] + ' ' + u).join(' + ');
+function appOrderQtyText(list) {
+  const n = appOrderQtyOf(list);
+  return n + ' ' + (n === 1 ? 'ארגז' : 'ארגזים');
 }
-function appOrderSummaryText(key) { return appOrderSummaryOf(appOrdersFor(key)); }
-function appOrderDaysAgo(key) {
-  const list = appOrdersFor(key); if (!list.length) return 0;
+function appOrderDaysAgo(list) {
+  if (!list || !list.length) return 0;
   const oldest = Math.min.apply(null, list.map(x => Number(x.at) || Date.now()));
   return Math.floor((Date.now() - oldest) / 86400000);
 }
-function unitLabelFromState(u) { return u === 'unit' ? 'יחידות' : 'ארגזים'; }
 function toggleAppOrder(key, item, fromOrderId) {
   const had = (appOrders || []).some(x => x && x.key === key && !appOrderArrived(x));
   if (had) appOrders = appOrders.filter(x => !(x && x.key === key));
   else {
-    const amount = Math.max(1, parseInt((item && item.amount), 10) || 1);
-    const unit = (item && item.unit === 'יחידות') ? 'יחידות' : 'ארגזים';
-    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount, unit, at: Date.now(), fromOrderId: fromOrderId || '' }]);
+    // ברירת מחדל: הכמות שהוזמנה במקור כשהיא בארגזים, אחרת ארגז אחד
+    const orig = parseInt((item && item.amount), 10) || 0;
+    const amount = (item && item.unit === 'ארגזים' && orig > 0) ? orig : 1;
+    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount, at: Date.now(), fromOrderId: fromOrderId || '' }]);
   }
   saveAppOrders();
   buzz(had ? 8 : 18);
   rerender();
   updateCart();
-  if (!had) showToast('סומן — הכמות תרד מההזמנה לנהג', null, null, 2600);
+  if (!had) showToast('סומן — המוצר יופיע באדום בהזמנה', null, null, 2600);
 }
 function stepAppOrder(key, delta) {
   const list = appOrdersFor(key); if (!list.length) return;
@@ -2562,7 +2558,8 @@ function appOrdersSweep() {
 // המקורית), ואחרי הסימון אפשר לכוונן אותה ב-−/+ אם הזמינו רק חלק.
 function appMissingRowHtml(it, orderId) {
   const key = orderItemKey(it);
-  const marked = appOrdersFor(key).length > 0;
+  const marks = appOrdersFor(key);
+  const marked = marks.length > 0;
   const name = '<span class="text-sm font-bold ' + (marked ? 'text-slate-500 line-through decoration-slate-300' : 'text-rose-800') + ' min-w-0 truncate">' + htmlEscape(it.name) + '</span>';
   const check = '<button data-role="app-mark" data-id="' + key + '" data-oid="' + (orderId || '') + '" class="btn-tap shrink-0 w-6 h-6 rounded-md flex items-center justify-center ' + (marked ? 'bg-emerald-500 text-white' : 'bg-white border-2 border-rose-300 text-transparent') + '"><i class="fa-solid fa-check text-[11px]"></i></button>';
   if (!marked) {
@@ -2570,16 +2567,16 @@ function appMissingRowHtml(it, orderId) {
       '<button data-role="app-mark" data-id="' + key + '" data-oid="' + (orderId || '') + '" class="btn-tap mr-auto shrink-0 text-[10px] font-black text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-1"><i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה</button>' +
     '</div>';
   }
-  const days = appOrderDaysAgo(key);
+  const days = appOrderDaysAgo(marks);
   const late = days >= 3;
   return '<div class="flex items-center gap-2 flex-wrap" data-appkey="' + key + '">' + check + name +
     '<span class="mr-auto shrink-0 flex items-center gap-1">' +
       '<button data-role="app-minus" data-id="' + key + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
-      '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + appOrderSummaryText(key) + '</span>' +
+      '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + appOrderQtyText(marks) + '</span>' +
       '<button data-role="app-plus" data-id="' + key + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
     '</span>' +
     '<span class="w-full text-[10px] font-bold ' + (late ? 'text-amber-600' : 'text-emerald-600') + ' pr-8">' +
-      '<i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה' + (days > 0 ? ' לפני ' + days + ' ימים' + (late ? ' — ועדיין לא הגיע' : '') : ' היום') + ' · יקוזז מההזמנה לנהג' +
+      '<i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה' + (days > 0 ? ' לפני ' + days + ' ימים' + (late ? ' — ועדיין לא הגיע' : '') : ' היום') + ' · יופיע באדום בהזמנה' +
     '</span>' +
   '</div>';
 }
@@ -2602,8 +2599,6 @@ function renderHistory() {
         return '<li class="flex justify-between items-center gap-2 text-sm border-b border-slate-100 pb-2 last:border-0">' +
           '<span class="font-medium ' + (gone ? 'text-rose-700' : 'text-slate-700') + ' min-w-0">' + htmlEscape(it.name) +
             (gone ? ' <span class="text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded whitespace-nowrap">לא הגיע</span>' : '') +
-            // v288: תיעוד הקיזוז בהזמנה עצמה — כמה ירד כי הוזמן באפליקציה
-            ((Number(it.appDeducted) || 0) > 0 ? ' <span class="text-[10px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded whitespace-nowrap">− ' + it.appDeducted + ' באפליקציה</span>' : '') +
           '</span>' +
           '<span class="font-black bg-slate-100 px-2 rounded shrink-0">' + htmlEscape(it.amount) + ' ' + htmlEscape(it.unit) + '</span></li>';
       }).join('');
@@ -2617,7 +2612,7 @@ function renderHistory() {
             '<div class="text-xs font-black text-rose-700 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> הוזמן ולא הגיע</div>' +
             '<div class="space-y-1.5">' + missing.map(it => appMissingRowHtml(it, o.id)).join('') + '</div>' +
             '<div class="text-[10px] font-bold text-rose-500 mt-2">לפי תעודות הקליטה שנקלטו אחרי ההזמנה. כמות חלקית נחשבת "הגיע".</div>' +
-            '<div class="text-[10px] font-bold text-slate-500 mt-1"><i class="fa-solid fa-mobile-screen"></i> סימון "הוזמן באפליקציה" מוריד את הכמות מההזמנה הבאה לנהג — עד שהסחורה מגיעה.</div>' +
+            '<div class="text-[10px] font-bold text-slate-500 mt-1"><i class="fa-solid fa-mobile-screen"></i> סימון "הוזמן באפליקציה" (בארגזים) יצבע את המוצר באדום בהזמנה לנהג — עד שהסחורה מגיעה.</div>' +
           '</div>'
         : '';
       return '<details class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-3">' +
@@ -3632,34 +3627,25 @@ function toggleUnit(id, btn) {
 }
 
 // ===== שליחה =====
-// v288: מה שכבר הוזמן באפליקציה של יטבתה יורד מהכמות שנשלחת לנהג. הקיזוז
-// רק ביחידת מידה זהה — 3 ארגזים באפליקציה לא מקזזים הזמנה ביחידות.
-function orderLineDeduction(p) {
-  const st = orderState[p.id] || {};
-  const amount = parseInt(st.amount, 10) || 0;
-  const unit = unitLabelFromState(st.unit);
-  const marks = appOrdersForProduct(p);
-  if (!marks.length) return { amount, unit, net: amount, app: 0, mismatch: false, marks };
-  const app = appOrderedQtyIn(marks, unit);
-  return { amount, unit, net: Math.max(0, amount - app), app, mismatch: app === 0, marks };
-}
 function orderedItems() {
-  return products.filter(p => !p.hidden && parseInt(orderState[p.id] && orderState[p.id].amount, 10) > 0).map(p => {
-    const d = orderLineDeduction(p);
+  return products.filter(p => !p.hidden && parseInt(orderState[p.id] && orderState[p.id].amount, 10) > 0).map(p => ({
     // v285: מזהה המוצר נשמר בהזמנה כדי שההשוואה מול הקליטה לא תישבר על שינוי שם.
-    const it = { productId: p.id, name: p.name, amount: d.net, unit: d.unit };
-    if (d.app > 0) it.appDeducted = d.app;
-    return it;
-  }).filter(it => it.amount > 0);
+    productId: p.id,
+    name: p.name, amount: parseInt(orderState[p.id].amount, 10),
+    unit: (orderState[p.id].unit === 'unit') ? 'יחידות' : 'ארגזים'
+  }));
 }
-// מה ירד מההזמנה — מוצג בחלון השליחה כדי שהקיזוז לעולם לא יהיה שקט
-function orderDeductions() {
+// v288: מוצרים שכבר הוזמנו באפליקציה ובכל זאת נכנסו להזמנה לנהג — תזכורת
+// אחרונה לפני השליחה. לא קיזוז: הכמות היא של המשתמש בלבד.
+function orderAppOrderedWarnings() {
   const out = [];
   products.forEach(p => {
     if (p.hidden) return;
-    const d = orderLineDeduction(p);
-    if (!(d.amount > 0) || !(d.app > 0)) return;
-    out.push({ name: p.name, app: d.app, unit: d.unit, amount: d.amount, net: d.net });
+    const amount = parseInt(orderState[p.id] && orderState[p.id].amount, 10) || 0;
+    if (!(amount > 0)) return;
+    const marks = appOrdersForProduct(p);
+    if (!marks.length) return;
+    out.push({ name: p.name, app: appOrderQtyText(marks), amount, unit: (orderState[p.id].unit === 'unit') ? 'יח׳' : 'ארגזים' });
   });
   return out;
 }
@@ -3691,13 +3677,13 @@ function renderSendModal(items, titleNote, type) {
     }
     return '<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-100 last:border-0"><span class="font-bold text-slate-700">' + i.name + '</span><span class="font-black text-blue-700 whitespace-nowrap">' + i.amount + ' ' + i.unit + '</span></div>';
   }).join('');
-  // v288: קיזוז "הוזמן באפליקציה" מוצג במפורש לפני השליחה
-  const deds = (type === 'order' && sendCtx && sendCtx.resetCurrent) ? orderDeductions() : [];
+  // v288: תזכורת אחרונה — מוצרים שכבר הוזמנו באפליקציה ובכל זאת בהזמנה
+  const deds = (type === 'order' && sendCtx && sendCtx.resetCurrent) ? orderAppOrderedWarnings() : [];
   const dedHtml = deds.length
-    ? '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-3">' +
-        '<div class="font-black text-sm text-emerald-800"><i class="fa-solid fa-mobile-screen"></i> ' + deds.length + ' מוצרים קוזזו — כבר הוזמנו באפליקציה</div>' +
-        deds.map(x => '<div class="flex justify-between gap-2 text-[11px] font-bold text-emerald-700 mt-1"><span class="min-w-0 truncate">' + htmlEscape(x.name) + '</span><span class="shrink-0 whitespace-nowrap">' + x.amount + ' − ' + x.app + ' = ' + (x.net > 0 ? x.net + ' ' + x.unit : '<b>לא נשלח</b>') + '</span></div>').join('') +
-        '<div class="text-[10px] font-bold text-emerald-600/80 mt-1.5">לביטול — הסר את הסימון בהיסטוריית ההזמנות</div>' +
+    ? '<div class="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3">' +
+        '<div class="font-black text-sm text-rose-800"><i class="fa-solid fa-mobile-screen"></i> ' + deds.length + ' מוצרים בהזמנה כבר הוזמנו באפליקציה</div>' +
+        deds.map(x => '<div class="flex justify-between gap-2 text-[11px] font-bold text-rose-700 mt-1"><span class="min-w-0 truncate">' + htmlEscape(x.name) + '</span><span class="shrink-0 whitespace-nowrap">באפליקציה ' + x.app + ' · לנהג ' + x.amount + ' ' + x.unit + '</span></div>').join('') +
+        '<div class="text-[10px] font-bold text-rose-500 mt-1.5">הכמות נשלחת כמו שהיא — ודא שזאת תוספת מכוונת ולא כפילות</div>' +
       '</div>'
     : '';
   const gapNote = supplierGapWhatsappNote();
@@ -3720,11 +3706,7 @@ function renderSendModal(items, titleNote, type) {
 }
 function openSendCurrent() {
   const items = orderedItems();
-  if (!items.length) {
-    // v288: כל מה שהוזמן קוזז — לא שולחים הודעה ריקה, ומסבירים למה
-    if (orderDeductions().length) showToast('כל המוצרים בהזמנה כבר הוזמנו באפליקציה — אין מה לשלוח לנהג', null, null, 3600);
-    return;
-  }
+  if (!items.length) return;
   sendCtx = { type: 'order', items, resetCurrent: true };
   renderSendModal(items, 'סיכום הזמנה', 'order');
 }
