@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v313 שני כפתורי ניווט קבועים: היסטוריית הזמנות ותעודות</title>
+    <title>הזמנות יטבתה - v314 כותרת נמוכה יותר — יותר מקום למוצרים</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -47,26 +47,21 @@
 
     <!-- כותרת -->
     <header class="sticky top-0 z-30 bg-gradient-to-l from-blue-700 to-blue-500 text-white shadow-lg">
-      <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div class="flex items-center gap-2.5 cursor-pointer min-w-0" id="brandHome">
-          <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center font-black text-2xl shrink-0">י</div>
-          <div class="flex flex-col min-w-0">
-            <h1 class="text-lg font-black leading-none truncate">הזמנות יטבתה</h1>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span id="onlineDot" class="inline-flex rounded-full h-2.5 w-2.5 bg-green-400 shadow-[0_0_6px_rgba(74,222,128,.8)]"></span>
-              <span id="onlineText" class="text-[10px] text-blue-50/90 font-medium">מחובר</span>
-            </div>
-          </div>
+      <!-- v314: הכותרת הייתה גבוהה מדי בטלפון — ארבע שורות דביקות אכלו רבע
+           מהמסך. השם, הלוגו וסטטוס הרשת יושבים עכשיו בשורה אחת נמוכה
+           (h-10 במקום h-16, וסטטוס לצד השם במקום מתחתיו). -->
+      <div class="max-w-3xl mx-auto px-4 h-10 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 cursor-pointer min-w-0" id="brandHome">
+          <div class="w-7 h-7 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center font-black text-base shrink-0">י</div>
+          <h1 class="text-[15px] font-black leading-none truncate">הזמנות יטבתה</h1>
+          <span id="onlineDot" class="inline-flex rounded-full h-2.5 w-2.5 bg-green-400 shadow-[0_0_6px_rgba(74,222,128,.8)] shrink-0"></span>
+          <span id="onlineText" class="text-[10px] text-blue-50/90 font-medium shrink-0">מחובר</span>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <!-- v293: היסטוריית ההזמנות היא עכשיו מסך עבודה יומיומי (סימון "הוזמן
-               באפליקציה"), ולכן הכפתור לבן, גדול ובולט לעומת שאר כפתורי הכותרת.
-               בלי תווית: היא הייתה חותכת את שם האפליקציה ברוב מסכי האייפון.
-               v307: הכפתורים "מצב כהה" ו"הערות" ירדו מהכותרת — הם לא היו בשימוש,
-               והמקום שהתפנה הולך כולו לכפתור ההיסטוריה.
-               v313: כפתור ההיסטוריה ירד משורת הכותרת אל שורה משלו (navHistory)
-               יחד עם כפתור התעודות — ראה ההערה שם. -->
-          <button id="btnSettings" class="btn-tap w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center border border-white/15" title="הגדרות"><i class="fa-solid fa-gear"></i></button>
+          <!-- v307: הכפתורים "מצב כהה" ו"הערות" ירדו מהכותרת — הם לא היו בשימוש.
+               v313: גם כפתור ההיסטוריה ירד מכאן, לשורה משלו (navHistory) יחד עם
+               כפתור התעודות. בשורה הזאת נשאר רק גלגל ההגדרות. -->
+          <button id="btnSettings" class="btn-tap w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center border border-white/15 text-sm" title="הגדרות"><i class="fa-solid fa-gear"></i></button>
         </div>
       </div>
 
@@ -75,13 +70,13 @@
            היסטוריית חזרות). אי אפשר היה לדעת לאן הוא לוקח.
            עכשיו: שתי מטרות = שני כפתורים רחבים עם תוויות, גלויים בכל המסכים.
            היסטוריית החזרות לא אבדה — יש לה כפתור משלה בראש מסך החזרות. -->
-      <div id="navHistory" class="max-w-3xl mx-auto px-4 pb-2">
+      <div id="navHistory" class="max-w-3xl mx-auto px-4 pb-1.5">
         <div class="flex gap-2">
-          <button id="btnOrdersHistory" class="btn-tap flex-1 min-w-0 h-11 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
+          <button id="btnOrdersHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
             <i class="fa-solid fa-clock-rotate-left text-sm shrink-0"></i>
             <span class="font-black text-[13px] truncate">היסטוריית הזמנות</span>
           </button>
-          <button id="btnReceiptsHistory" class="btn-tap flex-1 min-w-0 h-11 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="תעודות קליטה" aria-label="תעודות קליטה">
+          <button id="btnReceiptsHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="תעודות קליטה" aria-label="תעודות קליטה">
             <i class="fa-solid fa-file-invoice text-sm shrink-0"></i>
             <span class="font-black text-[13px] truncate">תעודות קליטה</span>
           </button>
@@ -89,30 +84,30 @@
       </div>
 
       <!-- לשוניות מצב -->
-      <div id="modeTabs" class="max-w-3xl mx-auto px-4 pb-2">
-        <div class="flex bg-white/10 rounded-xl p-1 border border-white/15">
-          <button id="segOrder" class="flex-1 py-2 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-cart-shopping text-xs"></i> הזמנה</button>
-          <button id="segReturns" class="flex-1 py-2 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-rotate-left text-xs"></i> חזרות</button>
-          <button id="segReceiving" class="flex-1 py-2 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-truck-ramp-box text-xs"></i> קליטה</button>
+      <div id="modeTabs" class="max-w-3xl mx-auto px-4 pb-1.5">
+        <div class="flex bg-white/10 rounded-xl p-0.5 border border-white/15">
+          <button id="segOrder" class="flex-1 py-1.5 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-cart-shopping text-xs"></i> הזמנה</button>
+          <button id="segReturns" class="flex-1 py-1.5 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-rotate-left text-xs"></i> חזרות</button>
+          <button id="segReceiving" class="flex-1 py-1.5 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-truck-ramp-box text-xs"></i> קליטה</button>
           <!-- v279: ניהול הוא טאב קבוע בשורה — לא כרטיס מתקפל בתוך הקליטה -->
-          <button id="segManage" class="flex-1 py-2 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-screwdriver-wrench text-xs"></i> ניהול</button>
+          <button id="segManage" class="flex-1 py-1.5 rounded-lg text-sm font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-screwdriver-wrench text-xs"></i> ניהול</button>
         </div>
       </div>
 
       <!-- v289: סרגל חזרה — בכותרת הדביקה, באותו מקום של לשוניות המצב.
            קודם הוא היה fixed בתחתית המסך, ובאייפון הוא קפץ מעלה־מטה בכל
            פעם שסרגל הדפדפן הצטמצם או התרחב בזמן גלילה. -->
-      <div id="backTabs" class="hidden max-w-3xl mx-auto px-4 pb-2">
-        <button id="backToOrder" class="btn-tap w-full bg-white/15 border border-white/25 text-white rounded-xl py-2.5 font-black flex items-center justify-center gap-2">
+      <div id="backTabs" class="hidden max-w-3xl mx-auto px-4 pb-1.5">
+        <button id="backToOrder" class="btn-tap w-full bg-white/15 border border-white/25 text-white rounded-xl py-2 font-black flex items-center justify-center gap-2">
           <i class="fa-solid fa-chevron-right"></i> חזרה להזמנה
         </button>
       </div>
 
       <!-- חיפוש -->
-      <div id="searchWrap" class="max-w-3xl mx-auto px-4 pb-3">
+      <div id="searchWrap" class="max-w-3xl mx-auto px-4 pb-2">
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-blue-200 text-sm"></i>
-          <input id="searchInput" type="text" inputmode="search" placeholder="חיפוש מוצר..." class="ph-light w-full bg-white/15 focus:bg-white text-white focus:text-slate-800 placeholder-blue-100 rounded-xl py-2.5 pr-9 pl-9 text-sm font-bold outline-none border border-white/20 focus:border-white transition-colors">
+          <input id="searchInput" type="text" inputmode="search" placeholder="חיפוש מוצר..." class="ph-light w-full bg-white/15 focus:bg-white text-white focus:text-slate-800 placeholder-blue-100 rounded-xl py-2 pr-9 pl-9 text-sm font-bold outline-none border border-white/20 focus:border-white transition-colors">
           <button id="clearSearch" class="hidden absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 w-7 h-7 flex items-center justify-center"><i class="fa-solid fa-circle-xmark"></i></button>
         </div>
       </div>
@@ -120,7 +115,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v313 שני כפתורי ניווט קבועים: היסטוריית הזמנות ותעודות</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v314 כותרת נמוכה יותר — יותר מקום למוצרים</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -1291,7 +1286,7 @@ function setView(v) {
 }
 function updateModeTabs() {
   const o = $('segOrder'), r = $('segReturns'), c = $('segReceiving'), m = $('segManage'); if (!o || !r || !c) return;
-  const base = 'flex-1 py-2 rounded-lg text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap ';
+  const base = 'flex-1 py-1.5 rounded-lg text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap ';
   const act = 'bg-white text-blue-700 shadow', off = 'text-white/75';
   o.className = base + (mainMode === 'order' ? act : off);
   r.className = base + (mainMode === 'returns' ? act : off);
@@ -1302,7 +1297,7 @@ function updateModeTabs() {
 // שזה המסך הפתוח, ולא כפתור שממתין ללחיצה.
 function updateNavHistory() {
   const o = $('btnOrdersHistory'), r = $('btnReceiptsHistory'); if (!o || !r) return;
-  const base = 'btn-tap flex-1 min-w-0 h-11 rounded-xl shadow-lg ring-1 flex items-center justify-center gap-1.5 px-1.5 ';
+  const base = 'btn-tap flex-1 min-w-0 h-10 rounded-xl shadow-lg ring-1 flex items-center justify-center gap-1.5 px-1.5 ';
   const act = 'bg-blue-800 text-white ring-white/40', off = 'bg-white text-blue-700 ring-blue-900/10';
   o.className = base + (currentView === 'history' ? act : off);
   r.className = base + (currentView === 'receiptsHistory' ? act : off);
@@ -17720,7 +17715,7 @@ try { localStorage.removeItem('yt_dark'); } catch (e) {}
 // ===== סטטוס רשת =====
 function setOnlineUI() {
   isOnline = navigator.onLine;
-  $('onlineDot').className = 'inline-flex rounded-full h-2.5 w-2.5 ' + (isOnline ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,.8)]' : 'bg-red-400');
+  $('onlineDot').className = 'inline-flex rounded-full h-2.5 w-2.5 shrink-0 ' + (isOnline ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,.8)]' : 'bg-red-400');
   $('onlineText').textContent = isOnline ? 'מחובר' : 'לא מחובר';
 }
 window.addEventListener('online', setOnlineUI);
