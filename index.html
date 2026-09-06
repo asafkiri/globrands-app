@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v317 מק״טים מדף המבצעים</title>
+    <title>הזמנות יטבתה - v318 מסך הוזמן באפליקציה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -115,7 +115,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v317 מק״טים מדף המבצעים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v318 מסך הוזמן באפליקציה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -893,6 +893,13 @@ function appOrdersSig(list) {
 // עדכון תצוגה אחרי שינוי שהגיע ממכשיר אחר או מניקוי אוטומטי
 function refreshAppOrderUi() {
   if (currentView === 'history') { refreshAppRows(null); refreshAppPanels(); return; }
+  // v318: במסך "הוזמן באפליקציה" מרעננים נקודתית ולא בונים מחדש — בנייה
+  // מחדש הייתה מאפסת את תיבת החיפוש בזמן שמקלידים בה
+  if (currentView === 'appOrders') {
+    const a = document.activeElement;
+    if (a && app.contains(a) && a.tagName === 'INPUT') { refreshAppNotArrived(); return; }
+    refreshAppPanels(); refreshAppNotArrived(); return;
+  }
   if (currentView === 'order') {
     const a = document.activeElement;
     if (!(a && app.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT'))) rerender();
@@ -1355,6 +1362,7 @@ function renderView() {
   else if (currentView === 'actionLog') renderActionLog();
   else if (currentView === 'analysis') renderAnalysis();
   else if (currentView === 'launches') renderLaunches(); // v276
+  else if (currentView === 'appOrders') renderAppOrders(); // v318
   updateCart();
   updateBackBarLabel();
 }
@@ -1423,7 +1431,7 @@ function renderOrder() {
   }
   const rows = buildOrderRowsGrouped(visible);
   app.innerHTML =
-    supplierGapBannerHtml() + pendingReturnsBannerHtml() +
+    supplierGapBannerHtml() + pendingReturnsBannerHtml() + appOrdersEntryHtml() +
     '<div class="flex items-center justify-between gap-2 mb-3 px-1">' +
       '<div class="text-[11px] text-slate-400 font-medium leading-tight">טפו על <b class="text-blue-500">מומלץ</b> כדי להזמין את הכמות, או הקלידו כמות אחרת · לחיצה ארוכה על מוצר פותחת עריכה</div>' +
       '<button data-role="clear-order" class="btn-tap shrink-0 text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">נקה</button>' +
@@ -2939,6 +2947,44 @@ function appPanelHtml(orderId) {
 function refreshAppPanels() {
   const roots = document.querySelectorAll('#app [data-approot]');
   for (let i = roots.length - 1; i >= 0; i--) roots[i].outerHTML = appPanelHtml(roots[i].dataset.approot);
+  refreshAppPastChips();
+}
+
+// ===== v318: מה שסומן בעבר =====
+// המבחר שמוזמן באפליקציה של הספק חוזר על עצמו כמעט במלואו מהזמנה להזמנה,
+// ו-appOrders שומר רשומה אחת לכל מוצר שסומן אי פעם — כלומר הרשימה הזאת
+// היא בדיוק הרפרטואר של החנות. צ'יפ ללחיצה אחת חוסך את החיפוש ברוב
+// המקרים. מוצגים רק מוצרים שאינם מסומנים עכשיו ואינם ברשימת "לא הגיע",
+// כדי שכל מוצר יופיע במקום אחד בלבד במסך.
+function appPastList() {
+  const active = appOrderIndex();
+  const seen = {}, out = [];
+  (appOrders || []).slice().sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0)).forEach(x => {
+    if (!x || !x.key || seen[x.key]) return;
+    if (active[x.key] || appOrderNotArrived(x)) return;
+    if (x.key.indexOf('name:') === 0) return;          // ללא מוצר במאגר אין מה לסמן מחדש
+    const p = products.find(y => y.id === x.key);
+    if (!p || p.hidden) return;
+    seen[x.key] = 1;
+    out.push({ id: p.id, name: p.name || '' });
+  });
+  return out;
+}
+function appPastChipsHtml() {
+  const past = appPastList();
+  if (!past.length) return '';
+  return '<div data-appchips="1" class="bg-white border border-slate-200 rounded-xl p-3 mb-3">' +
+    '<div class="font-black text-sm text-slate-700 mb-2"><i class="fa-solid fa-clock-rotate-left text-slate-400"></i> סימנת בעבר · לחיצה אחת מסמנת שוב</div>' +
+    '<div class="flex flex-wrap gap-1.5">' +
+      past.map(p => '<button data-role="app-add" data-id="' + htmlEscape(p.id) + '" class="btn-tap text-[12px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-right">' +
+        '<i class="fa-solid fa-plus text-[9px] text-blue-600 ml-1"></i>' + htmlEscape(p.name) + '</button>').join('') +
+    '</div></div>';
+}
+function refreshAppPastChips() {
+  const box = document.querySelector('#app [data-appchips]');
+  if (!box) return;
+  const html = appPastChipsHtml();
+  if (html) box.outerHTML = html; else box.remove();
 }
 function setAppSearch(el, val) {
   appSearch = val || '';
@@ -3150,11 +3196,85 @@ function renderHistory() {
             '<div class="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-full text-sm shrink-0">' + ((o.items || []).length) + ' פריטים</div>' +
           '</div>' +
         '</summary>' +
-        '<div class="px-4 pb-4 border-t border-slate-100 pt-3">' + (idx === 0 ? appPanelHtml(o.id) : '') + missingBlock + '<ul class="space-y-2">' + items + '</ul>' +
+        // v318: פאנל הסימון עבר למסך משלו. כאן נשאר קיצור דרך אליו, כדי
+        // שמי שמגיע להיסטוריה לבדוק מה לא הגיע יוכל להמשיך ישר לסימון.
+        '<div class="px-4 pb-4 border-t border-slate-100 pt-3">' +
+          (idx === 0
+            ? '<button data-role="go-app-orders" class="btn-tap w-full bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-3 py-2.5 mb-3 flex items-center gap-2 text-right">' +
+                '<i class="fa-solid fa-mobile-screen"></i>' +
+                '<span class="flex-1 min-w-0 text-[12px] font-black">הוזמן באפליקציה של יטבתה' +
+                  (appActiveList().length ? ' · ' + appActiveList().length + ' מסומנים' : '') + '</span>' +
+                '<i class="fa-solid fa-chevron-left text-blue-300"></i></button>'
+            : '') +
+          missingBlock + '<ul class="space-y-2">' + items + '</ul>' +
           '<button data-role="resend" data-id="' + o.id + '" class="btn-tap mt-3 w-full bg-green-50 text-green-700 font-black py-2.5 rounded-xl flex items-center justify-center gap-2"><i class="fa-brands fa-whatsapp"></i> שלח שוב</button>' +
         '</div>' +
       '</details>';
     }).join('');
+}
+
+// ===== v318: מסך "הוזמן באפליקציה של יטבתה" =====
+// עד כה הפאנל ישב בתוך כרטיס ההזמנה האחרונה בהיסטוריה — שלוש פעולות
+// להגיע אליו, ודחוס בין רשימת הפריטים של ההזמנה ל"הוזמן ולא הגיע".
+// המיקום גם הניח שסימון הוא תת-משימה של סקירת ההזמנה, והוא לא: מזמינים
+// בשטראוס ביום אחד ומהנהג ביום אחר.
+// המסך הזה הוא בדיוק אותה זרימה, פרוסה על מסך שלם: אותה הזמנה אחרונה,
+// אותן פונקציות ואותם כפתורים — appPanelHtml, appMissingRowHtml
+// ו-appNotArrivedRowHtml כפי שהם, עם אותו orderId. לא נוספה שום לוגיקה,
+// ולכן ההתנהגות (צביעה באדום בהזמנה לנהג, הורדה מהכמות, סגירה בשידור או
+// בקליטה) זהה לחלוטין למה שהיה.
+function renderAppOrders() {
+  const last = history && history.length ? history[0] : null;
+  if (!last) {
+    app.innerHTML = '<div class="text-center py-16 text-slate-400">' +
+      '<i class="fa-solid fa-mobile-screen text-5xl mb-4"></i>' +
+      '<h3 class="font-black text-xl text-slate-600">אין עדיין הזמנה</h3>' +
+      '<div class="text-sm font-bold mt-2">המסך הזה נשען על ההזמנה האחרונה לנהג.<br>שדרו הזמנה אחת וחזרו לכאן.</div></div>';
+    return;
+  }
+  const d = new Date(last.timestamp);
+  const dateStr = d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+  const timeStr = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
+  const missing = orderMissingItems(0);
+  const appMiss = appNotArrivedList();
+  const missingBlock = ((missing && missing.length) || appMiss.length)
+    ? '<div class="bg-rose-50 border border-rose-200 rounded-xl p-3">' +
+        '<div class="text-xs font-black text-rose-700 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> הוזמן ולא הגיע</div>' +
+        '<div class="space-y-1.5">' + (missing || []).map(it => appMissingRowHtml(it, last.id)).join('') + '</div>' +
+        '<div data-appmiss="1" class="space-y-1.5' + ((missing && missing.length) ? ' mt-1.5 pt-1.5 border-t border-rose-200' : '') + '">' + appMiss.map(appNotArrivedRowHtml).join('') + '</div>' +
+        '<div class="text-[10px] font-bold text-rose-500 mt-2">לפי תעודות הקליטה שנקלטו אחרי ההזמנה. כמות חלקית נחשבת "הגיע".</div>' +
+      '</div>'
+    : '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">' +
+        '<div class="text-xs font-black text-emerald-700"><i class="fa-solid fa-check"></i> הכל מההזמנה האחרונה הגיע</div></div>';
+
+  app.innerHTML =
+    '<div class="px-1 pt-1 pb-3">' +
+      '<h2 class="font-black text-2xl text-slate-800 leading-tight"><i class="fa-solid fa-mobile-screen text-blue-600"></i> הוזמן באפליקציה</h2>' +
+      '<div class="text-[12px] font-bold text-slate-400 mt-1">מה שהזמנתם ישירות אצל הספק. הסימון צובע את המוצר באדום בהזמנה לנהג ויורד מהכמות, עד השידור הבא או קליטת סחורה.</div>' +
+      '<div class="text-[11px] font-bold text-slate-500 mt-2"><i class="fa-solid fa-clock-rotate-left text-slate-300"></i> ההזמנה האחרונה לנהג · ' + dateStr + ' · ' + timeStr + '</div>' +
+    '</div>' +
+    appPanelHtml(last.id) +
+    appPastChipsHtml() +
+    missingBlock;
+}
+function appOrdersEntryHtml() {
+  // הכניסה יושבת דווקא במסך ההזמנה, ולא כטאב נפרד: הסימון משפיע ישירות
+  // על ההזמנה לנהג, והמונה צריך להיות מול העיניים לפני שמשדרים.
+  const n = appActiveList().length;
+  const miss = appNotArrivedList().length;
+  return '<button data-role="go-app-orders" class="btn-tap w-full bg-white border border-slate-200 rounded-2xl shadow-sm p-3 mb-3 flex items-center gap-3 text-right">' +
+    '<span class="bg-blue-50 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center shrink-0"><i class="fa-solid fa-mobile-screen text-lg"></i></span>' +
+    '<span class="flex-1 min-w-0">' +
+      '<span class="block font-black text-slate-800 leading-tight">הוזמן באפליקציה של יטבתה</span>' +
+      '<span class="block text-[11px] font-bold text-slate-400 mt-0.5">' +
+        (n ? (n + ' מסומנים · יורדים מההזמנה לנהג') : 'לסימון מה שהזמנתם ישירות אצל הספק') +
+        (miss ? ' · ' + miss + ' לא הגיעו' : '') +
+      '</span>' +
+    '</span>' +
+    (n ? '<span class="shrink-0 text-[12px] font-black bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">' + n + '</span>' : '') +
+    '<i class="fa-solid fa-chevron-left text-slate-300 shrink-0"></i>' +
+  '</button>';
 }
 
 // ===== הערות ותזכורות =====
@@ -17420,6 +17540,7 @@ app.addEventListener('click', (e) => {
   if (role === 'ai-confirm-findings') { if (aiScanEvaluation) { aiScanEvaluation.userConfirmedFindings = true; renderReconcile(); } return; }
   if (role === 'ai-apply') { aiApplyInvoiceResult(); return; }
   if (role === 'clear-order') showConfirm('ניקוי הזמנה', 'לנקות את כל הכמויות שהוזנו?', 'נקה', clearOrder);
+  else if (role === 'go-app-orders') setView('appOrders'); // v318
   else if (role === 'go-contacts') setView('contacts');
   else if (role === 'go-trash') setView('trash');
   else if (role === 'go-health') setView('health');
