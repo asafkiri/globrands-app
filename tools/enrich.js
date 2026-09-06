@@ -23,6 +23,16 @@ try {
   delete OVERRIDES._;
 } catch (e) { /* אין קובץ — ממשיכים בלי */ }
 
+// צמדי מק"ט↔ברקוד מדף המוצר של הספק. זה גובר על הכל, כולל על ההכרעות
+// הידניות: הברקוד כבר בכרטיס המוצר שלנו, ולכן אין כאן שום הסקה — זה אותו
+// פריט או שלא. כל צמד כזה שווה יותר מכל הניקוד שהמנוע יודע לחשב.
+let SKU_BARCODE = {};
+try {
+  SKU_BARCODE = JSON.parse(fs.readFileSync(__dirname + '/sku-barcodes.json', 'utf8'));
+  delete SKU_BARCODE._;
+} catch (e) { /* אין קובץ */ }
+const digits = v => String(v == null ? '' : v).replace(/\D/g, '');
+
 // ===== ולידציה של מבנה הגיבוי — נכשלים ברעש, לא בשקט =====
 if (!payload || typeof payload !== 'object') throw new Error('גיבוי לא תקין');
 if (!payload.collections || typeof payload.collections !== 'object') throw new Error('אין collections בגיבוי');
@@ -151,7 +161,15 @@ const filled = [], review = [], nomatch = [], already = [];
 let touched = 0;
 
 const overridden = [];
+const byBarcode = [];
 const bySku = new Map(catalog.map(c => [c.sku, c]));
+
+// שלב 0: התאמות ברקוד — ודאיות, ולכן נסגרות לפני כל חישוב
+const barcodeToSku = new Map();
+Object.keys(SKU_BARCODE).forEach(sku => {
+  const bc = digits(SKU_BARCODE[sku]);
+  if (bc) barcodeToSku.set(bc, digits(sku));
+});
 
 // שלב א: מועמדים לכל מוצר, אחרי סינון התנגשויות טעם.
 // מוצרים מוסתרים נכללים גם הם — הם קיימים במאגר וגם להם מגיע מק"ט — אבל
@@ -160,8 +178,17 @@ const pending = [];
 for (const id of Object.keys(productDocs)) {
   const p = productDocs[id];
   if (!p || typeof p !== 'object') continue;
-  const existing = String(p.sku == null ? '' : p.sku).replace(/\D/g, '');
+  const existing = digits(p.sku);
   if (existing) { already.push({ id, name: p.name, sku: existing }); continue; }
+
+  const exact = barcodeToSku.get(digits(p.barcode));
+  if (exact) {
+    const c = bySku.get(exact);
+    p.sku = exact;                                   // === כתיבה: sku בלבד ===
+    touched++;
+    byBarcode.push({ id, name: p.name, sku: exact, matched: c ? c.name : '(לא בקטלוג)' });
+    continue;
+  }
 
   const forced = OVERRIDES[String(p.name || '').trim()];
   if (forced) {
@@ -191,6 +218,7 @@ pairs.sort((x, y) => (x.entry.hidden - y.entry.hidden) || (y.r.s - x.r.s));
 const takenSku = new Set(), takenProd = new Set();
 // מק"ט שנקבע ידנית תפוס מראש — אף מוצר אחר לא יקבל אותו
 overridden.forEach(o => takenSku.add(o.sku));
+byBarcode.forEach(o => takenSku.add(o.sku));
 const assigned = new Map();
 pairs.forEach(({ entry, r }) => {
   if (takenProd.has(entry.id) || takenSku.has(r.c.sku)) return;
@@ -224,11 +252,12 @@ const ambiguous = review;
 
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
 fs.writeFileSync(outPath.replace(/\.json$/, '') + '-report.json',
-  JSON.stringify({ filled, overridden, ambiguous, nomatch, already }, null, 1));
+  JSON.stringify({ filled, byBarcode, overridden, ambiguous, nomatch, already }, null, 1));
 
 const total = Object.keys(productDocs).length;
 console.log('מוצרים בגיבוי        :', total);
 console.log('כבר היה להם מק"ט    :', already.length);
+console.log('לפי ברקוד מאומת     :', byBarcode.length);
 console.log('נקבעו ידנית         :', overridden.length);
 console.log('מולאו אוטומטית      :', filled.length);
 console.log('דו-משמעיים (לך)     :', ambiguous.length);
