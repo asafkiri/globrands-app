@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v315 שורת היסטוריית החזרות מקוצרת</title>
+    <title>הזמנות יטבתה - v316 מק״ט הספק וחיפוש גמיש</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -115,7 +115,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v315 שורת היסטוריית החזרות מקוצרת</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v316 מק״ט הספק וחיפוש גמיש</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -385,6 +385,9 @@
               <input id="prod_barcode" type="text" inputmode="numeric" autocomplete="off" class="flex-1 min-w-0 p-3 rounded-xl border-2 border-slate-200 outline-none font-bold tracking-wide text-center focus:border-blue-500" placeholder="ללא ברקוד">
               <button id="pr_scanbc" class="btn-tap shrink-0 w-12 h-12 rounded-xl font-black bg-blue-50 text-blue-700 flex items-center justify-center" title="סרוק ברקוד"><i class="fa-solid fa-camera"></i></button>
             </div>
+            <label class="text-[11px] text-slate-400 font-bold block mb-1">מק״ט הספק</label>
+            <input id="prod_sku" type="text" inputmode="numeric" autocomplete="off" class="w-full p-3 rounded-xl border-2 border-slate-200 outline-none font-bold tracking-wide text-center focus:border-blue-500 mb-1" placeholder="ריק = לא ידוע">
+            <div class="text-[10px] text-slate-400 font-bold mb-3">המספר הקצר שמופיע באפליקציה של הספק מתחת לשם המוצר. משמש רק לחיפוש — אפשר להשאיר ריק.</div>
             <label class="text-[11px] text-slate-400 font-bold block mb-1">קבוצה במסך ההזמנה *</label>
             <select id="prod_category" class="w-full p-3 rounded-xl border-2 border-slate-200 outline-none font-bold bg-white focus:border-blue-500"></select>
             <div class="text-[10px] text-slate-400 font-bold mt-1.5">הקבוצה קובעת גם את הסדר ואת מחיר המכירה המומלץ לפי אחוז הרווח שלה.</div>
@@ -697,6 +700,18 @@ function findProductByBarcode(value, exceptId) {
   const key = normalizeBarcode(value);
   if (!key) return null;
   return products.find(p => p.id !== exceptId && normalizeBarcode(p.barcode) === key) || null;
+}
+// v316: מק״ט הספק. מגיע משלושה מקורות — הקלדה, מצגת ההשקות ודף המבצעים —
+// ולעולם מושווה בצורה אחת. מדביקים אותו מהאפליקציה של הספק, ולכן הוא סופג
+// את אותם תווים נסתרים שהברקוד סופג. ספרות בלבד: מק״ט הוא מספר, וכל מה
+// שאינו ספרה בהדבקה ("מק״ט 212339") הוא רעש ולא חלק מהערך.
+function normalizeSku(value) {
+  return String(value == null ? '' : value).replace(/\D/g, '').slice(0, 20);
+}
+function findProductBySku(value, exceptId) {
+  const key = normalizeSku(value);
+  if (!key) return null;
+  return products.find(p => p.id !== exceptId && normalizeSku(p.sku) === key) || null;
 }
 function duplicateBarcodeMessage(product) {
   return 'הפריט כבר קיים' + (product && product.name ? ': ' + product.name : '');
@@ -2746,6 +2761,15 @@ function barcodeChipHtml(code) {
     (last ? '<span class="text-[9px] font-black bg-white/25 rounded px-1 py-0.5">הועתק אחרון</span>' : '') +
   '</button>';
 }
+// v316: המק״ט מוצג ליד הברקוד כדי לוודא בעין שזה המוצר הנכון — זה המספר
+// שרואים באפליקציה של הספק מתחת לשם. תווית בלבד, לא כפתור העתקה: מעתיקים
+// כדי להדביק בחיפוש של הספק, ושם מחפשים לפי ברקוד.
+function skuChipHtml(sku) {
+  const code = normalizeSku(sku);
+  if (!code) return '';
+  return '<span class="inline-flex items-center gap-1 text-[10px] font-black text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 mt-0.5 mr-1">' +
+    'מק״ט <span dir="ltr">' + htmlEscape(code) + '</span></span>';
+}
 
 // ===== v291: חיפוש בראש הרשימה — כל מוצר במערכת, לא רק החוסרים =====
 // לא כל מה שמוזמן באפליקציה נמצא ברשימת החוסרים של ההזמנה הפתוחה. החיפוש
@@ -2762,15 +2786,109 @@ function appActiveList() {
       key,
       name: (p && p.name) || (list[0] && list[0].name) || key.replace(/^name:/, ''),
       barcode: barcodeForKey(key),
+      sku: (p && p.sku) || '',
       qty: appOrderQtyOf(list),
       at: Math.max.apply(null, list.map(x => Number(x.at) || 0))
     };
   }).sort((a, b) => (b.at - a.at) || a.name.localeCompare(b.name, 'he'));
 }
+// ===== v316: חיפוש גמיש =====
+// עד כאן החיפוש היה includes על השם — התאמת מחרוזת גולמית. בשטח מקלידים
+// את מה שרואים על המסך של הספק, והשמות שם כמעט זהים לשלנו אבל לא בדיוק:
+// גרש ("קוטג'"), סוגריים ("(200 גרם)"), אחוז, סדר מילים הפוך ("משקה ליטר
+// מקופלת" מול "שוקו מקופלת 1 ליטר") וקיצורים ("לל״ס" = "ללא סוכר").
+// כל אחד מאלה לבדו החזיר אפס תוצאות, והמשתמש חזר לחפש ידנית ברשימה.
+// כאן מנרמלים את שני הצדדים לאותה צורה, מפרקים למילים, ודורשים שכל מילה
+// שהוקלדה תימצא — בכל סדר, וגם כקידומת, כי מקלידים תוך כדי.
+const SEARCH_ABBREV = [
+  [/לל["״']?ס/g, 'ללא סוכר'], [/לל["״']?ג/g, 'ללא גלוטן'],
+  [/ש\.?\s?שועל|ש["״']ש/g, 'שיבולת שועל'],
+  [/ק["״']?ג\b/g, 'קילו'], [/מ["״']?ל\b/g, 'מל'], [/גר["״']?\b/g, 'גרם'],
+];
+const SEARCH_TRANSLIT = { ice: 'אייס', cake: 'קייק', not: 'נוט', milk: 'מילק', 'm*lk': 'מילק' };
+// מילים שמופיעות כמעט בכל שם ולכן אינן מזהות מוצר — הן רק מוסיפות רעש
+const SEARCH_STOP = new Set(['גרם', 'מל', 'ליטר', 'של', 'עם', 'בטעם', 'טעם', 'יח', 'קרטון', 'ארגז', 'אחוז', 'מארז']);
+function searchNorm(s) {
+  // אותם תווים נסתרים ש-normalizeBarcode מנקה, בלי הרווח — כאן הרווח מפריד מילים
+  let t = String(s == null ? '' : s).replace(/[\u00AD\u061C\u200B-\u200F\u2060-\u2069\uFEFF]/g, '').toLowerCase();
+  SEARCH_ABBREV.forEach(([re, to]) => { t = t.replace(re, to); });
+  return t.replace(/[a-z*]+/g, m => SEARCH_TRANSLIT[m] || m)
+    .replace(/["'׳״`]/g, '')
+    .replace(/[()\[\],.\-–—+/\\:;!?*]/g, ' ')
+    .replace(/(\d)\s*%/g, '$1 ')
+    .replace(/\s+/g, ' ').trim();
+}
+// אותיות סופיות מאוחדות: "אגוזים" שהוקלד ו"אגוזימ" שנוצר מנרמול הם מילה אחת
+const searchStem = w => w.replace(/ם$/, 'מ').replace(/ן$/, 'נ').replace(/ץ$/, 'צ').replace(/ף$/, 'פ').replace(/ך$/, 'כ');
+function searchTokens(s) {
+  return searchNorm(s).split(' ').filter(w => w && !SEARCH_STOP.has(w)).map(searchStem);
+}
+// הטוקנים של שם מוצר לא משתנים בין הקשות — מחשבים פעם אחת לכל שם
+const searchTokenCache = new Map();
+function productSearchTokens(name) {
+  const key = String(name || '');
+  let v = searchTokenCache.get(key);
+  if (!v) { v = searchTokens(key); searchTokenCache.set(key, v); }
+  return v;
+}
+// מקלידים תוך כדי, ולכן קידומת נחשבת התאמה: "אגוז" מוצא "אגוזים".
+// זה גם מה שסוגר "דניאל" מול "דניאלה" — הפרש של אות אחת בסוף.
+function searchWordHit(queryWord, nameWord) {
+  if (queryWord === nameWord) return 1;
+  if (nameWord.startsWith(queryWord)) return queryWord.length >= 2 ? 0.9 : 0;
+  if (queryWord.length >= 4 && queryWord.startsWith(nameWord)) return 0.8;
+  return 0;
+}
+// לא כל מילה שהוקלדה חייבת להימצא: השם אצל הספק עשיר מהשם שלנו — "יטבתה
+// פרו שוקולד אגוזים לל״ס 350 מל" מול "משקה פרו שוקולד אגוזים ללא סוכר".
+// דרישה שכל מילה תימצא החזירה שם אפס תוצאות. לכן שוקלים לפי כמה המילה
+// מזהה: מילה ארוכה ("מקופלת") מכריעה, מספר בודד (350, גודל אריזה שמופיע
+// רק אצל אחד הצדדים) כמעט לא נספר.
+const searchWeight = w => /^\d+$/.test(w) ? 1 : w.length;
+function appSearchScore(q, p) {
+  const qt = searchTokens(q);
+  if (!qt.length) return 0;
+  const nt = productSearchTokens(p.name);
+  let hit = 0, total = 0, wordHit = false;
+  for (const qw of qt) {
+    const w = searchWeight(qw);
+    total += w;
+    let best = 0;
+    for (const nw of nt) { const h = searchWordHit(qw, nw); if (h > best) best = h; }
+    hit += w * best;
+    if (best && qw.length >= 3) wordHit = true;
+  }
+  // התאמה שנשענת רק על מספר שנפגש במקרה אינה התאמה
+  if (!wordHit || !total) return 0;
+  const s = hit / total;
+  // חצי מהמשקל המזהה — מתחת לזה מדובר במילה משותפת אחת, לא באותו מוצר
+  if (s < 0.5) return 0;
+  // בין שני שמות שכוסו באותה מידה, הקצר הוא ההתאמה ההדוקה יותר
+  return s - Math.max(0, nt.length - qt.length) * 0.01;
+}
 function appSearchMatches(q) {
   q = (q || '').trim();
   if (!q) return [];
-  return products.filter(p => String(p.name || '').includes(q) || String(p.barcode || '').includes(q)).slice(0, 8);
+  // מספר שהודבק הוא כמעט תמיד ברקוד או מק״ט, לא חלק משם. התאמה מדויקת
+  // עולה לראש, כי היא ודאית: הדבקת "212339" צריכה לפתוח מוצר אחד, לא רשימה.
+  const digits = q.replace(/\D/g, '');
+  const byCode = [];
+  if (digits.length >= 3 && /^[\d\s\-]+$/.test(q)) {
+    products.forEach(p => {
+      const bc = normalizeBarcode(p.barcode), sku = normalizeSku(p.sku);
+      if (sku && sku === digits) byCode.push({ p, s: 100 });
+      else if (bc && bc === digits) byCode.push({ p, s: 99 });
+      else if (sku && sku.startsWith(digits)) byCode.push({ p, s: 90 });
+      else if (bc && bc.includes(digits)) byCode.push({ p, s: 80 });
+    });
+  }
+  const byName = products.map(p => ({ p, s: appSearchScore(q, p) })).filter(x => x.s > 0);
+  const seen = new Set();
+  return byCode.concat(byName)
+    .sort((a, b) => b.s - a.s)
+    .filter(x => { if (seen.has(x.p.id)) return false; seen.add(x.p.id); return true; })
+    .slice(0, 8)
+    .map(x => x.p);
 }
 function appSearchResultsHtml() {
   const q = (appSearch || '').trim();
@@ -2783,7 +2901,7 @@ function appSearchResultsHtml() {
     const on = (idx[p.id] || []).length > 0;
     return '<div class="p-2.5 border-b border-slate-100 last:border-0 flex items-start justify-between gap-2 ' + (on ? 'opacity-60' : '') + '">' +
       '<span class="min-w-0 flex-1"><span class="block font-bold text-slate-800 text-sm truncate">' + htmlEscape(p.name) + '</span>' +
-        barcodeChipHtml(p.barcode) + '</span>' +
+        barcodeChipHtml(p.barcode) + skuChipHtml(p.sku) + '</span>' +
       (on
         ? '<span class="text-[10px] font-black text-emerald-600 shrink-0 whitespace-nowrap mt-1"><i class="fa-solid fa-check"></i> כבר מסומן</span>'
         : '<button data-role="app-add" data-id="' + htmlEscape(p.id) + '" class="btn-tap text-[10px] font-black text-white bg-blue-600 rounded-lg px-2.5 py-1.5 shrink-0 whitespace-nowrap mt-0.5"><i class="fa-solid fa-plus"></i> סמן</button>') +
@@ -2797,7 +2915,7 @@ function appPanelHtml(orderId) {
     ? marked.map(m => '<div class="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">' +
         '<button data-role="app-mark" data-id="' + htmlEscape(m.key) + '" class="btn-tap shrink-0 w-6 h-6 rounded-md bg-emerald-500 text-white flex items-center justify-center"><i class="fa-solid fa-check text-[11px]"></i></button>' +
         '<span class="min-w-0 flex-1"><span class="block text-sm font-bold text-slate-700 truncate">' + htmlEscape(m.name) + '</span>' +
-          barcodeChipHtml(m.barcode) + '</span>' +
+          barcodeChipHtml(m.barcode) + skuChipHtml(m.sku) + '</span>' +
         '<span class="shrink-0 flex items-center gap-1">' +
           '<button data-role="app-minus" data-id="' + htmlEscape(m.key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
           '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</span>' +
@@ -13953,6 +14071,7 @@ function openProdModal(p, fromScan, presetCode, afterSaveTarget) {
   $('prodTitle').textContent = p ? 'עריכת מוצר' : 'מוצר חדש';
   $('prod_name').value = p ? (p.name || '') : '';
   $('prod_barcode').value = p ? (p.barcode || '') : (presetCode || '');
+  $('prod_sku').value = p ? (p.sku || '') : '';
   syncProductBarcodeDuplicate(false);
   $('prod_price').value = (p && p.price != null) ? p.price : '';
   $('prod_posPrice').value = (p && p.posPrice != null) ? p.posPrice : '';
@@ -14041,6 +14160,10 @@ function scanProdBarcode() {
 async function saveProd(again) {
   const name = ($('prod_name').value || '').trim();
   const barcode = ($('prod_barcode').value || '').trim();
+  // v316: מק״ט הספק — מאיץ חיפוש בלבד. אין ולידציה ואין חובה: מוצר בלי
+  // מק״ט עובד בדיוק כמו קודם. נשמר כספרות בלבד כדי שהדבקה מהאפליקציה של
+  // הספק ("מק״ט 212339") תיקלט זהה להקלדה ידנית.
+  const sku = normalizeSku($('prod_sku').value);
   const raw = ($('prod_price').value || '').toString().replace(',', '.').trim();
   const num = parseFloat(raw);
   if (raw !== '' && !(num >= 0)) { showToast('מחיר הקנייה אינו תקין', null, null, 2500); $('prod_price').focus(); return; }
@@ -14114,7 +14237,7 @@ async function saveProd(again) {
   const existingForPos = id ? products.find(x => x.id === id) : null;
   const posChanged = !existingForPos || (existingForPos.posPrice != null ? existingForPos.posPrice : null) !== posPrice;
   const posPriceAt = posChanged ? Date.now() : (Number(existingForPos && existingForPos.posPriceAt) || null);
-  const data = { name, barcode, price, posPrice, posPriceAt, creditPrice, deposit, billingPackId, billingPackSize, category, average, defaultUnit, defaultUnitUpdatedAt: unitUpdatedAt, boxSize, hidden };
+  const data = { name, barcode, sku, price, posPrice, posPriceAt, creditPrice, deposit, billingPackId, billingPackSize, category, average, defaultUnit, defaultUnitUpdatedAt: unitUpdatedAt, boxSize, hidden };
   clearTimeout(priceTimers[docId]); clearTimeout(avgTimers[docId]); clearTimeout(boxTimers[docId]);
   let savedProduct = null;
   if (id) {
@@ -14721,6 +14844,10 @@ function launchImportOpenNext() {
   const position = total - pending.length + 1;
   $('prodTitle').textContent = 'מוצר חדש מהמצגת (' + position + '/' + total + ')';
   $('prod_name').value = s.name || '';
+  // v316: המצגת מדפיסה את המק״ט בשדה משלה ליד הברקוד, והשרת (v143) כבר
+  // החזיר אותו כ-supplierItemCode — עד כה הלקוח זרק אותו. קריאה הגנתית:
+  // שרת ישן שאינו מחזיר את השדה פשוט משאיר אותו ריק, בלי לשבור את הייבוא.
+  $('prod_sku').value = normalizeSku(s.supplierItemCode);
   if (Number(s.unitsPerCarton) >= 2) $('prod_cartonUnits').value = String(s.unitsPerCarton); // מחשבון בלבד — לא "רק ארגזים שלמים"
   if (Number(s.unitPriceExVat) > 0) $('prod_price').value = s.unitPriceExVat;
   if (base) {
