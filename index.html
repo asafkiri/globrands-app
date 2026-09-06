@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v303 תביעת זיכוי לא נספרת כחזרה בניתוח המוצרים</title>
+    <title>הזמנות יטבתה - v304 ניתוח מוצרים סופר חזרות לפי מה שזוכה ואומת</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v303 תביעת זיכוי לא נספרת כחזרה בניתוח המוצרים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v304 ניתוח מוצרים סופר חזרות לפי מה שזוכה ואומת</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3124,8 +3124,8 @@ function openReturnsSend() {
     const p = products.find(x => x.id === it.productId);
     const unit = r2(it.manual ? (Number(it.unitPrice) || 0) : (Number(p && (Number(p.creditPrice) > 0 ? p.creditPrice : p.price)) || 0)); // מחיר זיכוי גובר על מחיר קנייה בחזרות
     const line = { name: it.name, barcode: it.barcode || '', qty: it.qty, unitPrice: unit, lineTotal: r2(unit * it.qty) };
-    // v303: שורה שחזרה מפער זיכוי היא תביעת כסף, לא סחורה שחוזרת שוב.
-    // בלי הסימון הזה ניתוח המוצרים היה סופר את אותן יחידות פעמיים.
+    // v304: מסמן את מקור השורה כדי שתוצג בהיסטוריה כ"תביעת זיכוי" ולא
+    // תיקרא כסחורה שחזרה שוב. הספירה עצמה נשענת על מה שאומת בכל תעודה.
     if (it.carried) line.carriedClaim = true;
     return line;
   });
@@ -15985,13 +15985,15 @@ function analysisAggregate(rcs, rets, fromD, toD, catalog) {
     const ts = Number(rt.timestamp) || 0;
     const status = rt.credited ? (returnsDiscrepancyInfo(rt).open ? 'partial' : 'full') : 'pending';
     (rt.items || []).forEach(l => {
-      // v303: שורת תביעת זיכוי (פער שהועבר מתעודה קודמת) אינה סחורה שחזרה —
-      // הסחורה כבר נספרה בתעודה המקורית, וספירה נוספת מנפחת את אחוז החזרות
-      if (anIsDepositLine(l) || l.carriedClaim) return;
+      if (anIsDepositLine(l)) return;
       const r = rowFor(l); if (!r) return;
-      const qty = Number(l.qty) || 0;
+      // v304: התעודה נספרת לפי מה שהספק זיכה בפועל ואומת (noteQty), לא לפי
+      // מה שיצא מהמדף. הפער שהועבר לרשימה הפתוחה יורד בשליחת החזרות הבאה,
+      // בשורה שלו — ולכן אין ספירה כפולה וגם אין יחידות שנעלמות.
       const unit = Number(l.unitPrice) || 0;
-      const val = (l.lineTotal != null) ? (Number(l.lineTotal) || 0) : r2(unit * qty);
+      const qty = (l.noteQty != null) ? (Number(l.noteQty) || 0) : (Number(l.qty) || 0);
+      const val = (l.noteQty != null) ? r2(unit * qty)
+        : ((l.lineTotal != null) ? (Number(l.lineTotal) || 0) : r2(unit * qty));
       r.retUnits += qty; r.retValue = r2(r.retValue + val);
       if (r.lastRet && dd === r.lastRet.d && ts === r.lastRet.ts) { r.lastRet.qty += qty; }
       else if (newer(dd, ts, r.lastRet)) { r.lastRet = { d: dd, ts, qty, unit, status }; }
