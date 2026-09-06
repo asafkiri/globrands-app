@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v316 מק״ט הספק וחיפוש גמיש</title>
+    <title>הזמנות יטבתה - v317 מק״טים מדף המבצעים</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -115,7 +115,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v316 מק״ט הספק וחיפוש גמיש</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v317 מק״טים מדף המבצעים</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -14343,6 +14343,45 @@ function updatePromoHint() {
 // "פתח את כל המבצעים" יוצרת אותם — עם התאריכים מהדף.
 let promoImport = null; // { stage: 'reading'|'wizard'|'summary', sheet, missing, error }
 
+// ===== v317: מק"טים מדף המבצעים =====
+// דף המבצעים החודשי הוא המקור הזול והמדויק ביותר למק"טים: בכל שורה
+// מודפסים הברקוד והמק"ט זה לצד זה, והברקוד כבר מזהה את המוצר במאגר —
+// ולכן אין כאן שום התאמת שמות ואין ניחוש. או שזה אותו פריט או שלא.
+// הכתיבה מוגבלת למוצרים שהשדה שלהם ריק: מק"ט שהוזן ידנית או שתוקן
+// לא נדרס לעולם. הכל נאסף בזיכרון ונכתב פעם אחת בסוף הייבוא, כדי שלא
+// לפזר עשרות כתיבות לענן באמצע קריאת הדף.
+let promoSkuPending = [];
+function collectSkuFromSheet(product, rawSku) {
+  const sku = normalizeSku(rawSku);
+  if (!sku || !product || normalizeSku(product.sku)) return;   // יש כבר — לא נוגעים
+  if (promoSkuPending.some(x => x.id === product.id)) return;
+  // מק"ט ששייך כבר למוצר אחר במאגר הוא סימן לשגיאת קריאה — מדלגים
+  if (findProductBySku(sku, product.id)) return;
+  promoSkuPending.push({ id: product.id, name: product.name || '', sku: sku });
+}
+async function flushPromoSkus() {
+  const list = promoSkuPending.slice();
+  promoSkuPending = [];
+  if (!list.length) return 0;
+  let saved = 0;
+  for (const it of list) {
+    const p = products.find(x => x.id === it.id);
+    if (!p || normalizeSku(p.sku)) continue;                   // השתנה בינתיים
+    const ok = await runCloudTaskSilent('save product sku', {
+      op: 'update', path: dataPath('products', it.id), data: { sku: it.sku },
+      operationId: makeOperationId('sku_' + it.id)
+    });
+    if (!ok) break;                                            // אין ענן — לא ממשיכים לנסות
+    p.sku = it.sku;
+    saved++;
+  }
+  if (saved) {
+    searchTokenCache.clear();
+    logAction('import', 'מק"טים מדף המבצעים', 'נוספו ' + saved + ' מק"טים למוצרים שלא היה להם', { count: saved });
+  }
+  return saved;
+}
+
 function promoImportMatch(sheet) {
   const missing = [];
   const seen = new Set();
@@ -14355,12 +14394,16 @@ function promoImportMatch(sheet) {
       // נקשרים למזהים רפאים. החיפוש האמיתי: findProductByBarcode מול המאגר.
       const match = findProductByBarcode(item.barcode, null);
       item.productId = match ? match.id : null;
+      // v317: כל שורה בדף המבצעים נושאת ברקוד ומק"ט זה לצד זה, והברקוד
+      // כבר זיהה את המוצר — אז המק"ט ידוע בוודאות, בלי התאמת שמות.
+      if (match) { collectSkuFromSheet(match, item.supplierItemCode); }
       if (match) { group.productIds.push(match.id); return; }
       group.missingCount++;
       const key = normalizeBarcode(item.barcode);
       if (seen.has(key)) return;
       seen.add(key);
-      missing.push({ barcode: item.barcode, name: item.name, price: group.unitPriceExVat });
+      // v317: מוצר חדש שנוצר מהדף מקבל את המק"ט מיד, בלי סבב נוסף
+      missing.push({ barcode: item.barcode, name: item.name, price: group.unitPriceExVat, sku: normalizeSku(item.supplierItemCode) });
     });
   });
   return missing;
@@ -14480,8 +14523,14 @@ async function promoImportStart(files) {
     }
     const sheet = payload.sheet;
     promoImportLabelGroups(sheet); // v263: כותרות כפולות בדף מקבלות שם ייחודי
+    promoSkuPending = [];          // v317: מתחילים איסוף מק"טים נקי
     const missing = promoImportMatch(sheet);
     promoImport = { stage: missing.length ? 'wizard' : 'summary', sheet: sheet, missing: missing, error: '' };
+    // v317: הכתיבה רצה אחרי שהמסך כבר מעודכן. היא לא חלק מהייבוא — אם
+    // הענן נופל, המבצעים נקלטים כרגיל והמק"טים פשוט יחכו לייבוא הבא.
+    flushPromoSkus().then(n => {
+      if (n) showToast('נוספו ' + n + ' מק״טים מדף המבצעים', null, null, 3200);
+    });
     if (missing.length) promoImportOpenNextMissing();
   } catch (error) {
     promoImport = { stage: 'error', sheet: null, missing: [], error: (error && error.message) || 'הייבוא נכשל' };
@@ -14527,6 +14576,7 @@ function promoImportOpenNextMissing() {
   }
   openProdModal(null, false, next.barcode, 'promo_import');
   $('prod_name').value = next.name || '';
+  $('prod_sku').value = next.sku || '';
   if (Number(next.price) > 0) $('prod_price').value = next.price;
   updateProdRecHint();
 }
