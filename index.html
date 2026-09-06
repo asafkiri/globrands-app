@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v314 כותרת נמוכה יותר — יותר מקום למוצרים</title>
+    <title>הזמנות יטבתה - v315 שורת היסטוריית החזרות מקוצרת</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -115,7 +115,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v314 כותרת נמוכה יותר — יותר מקום למוצרים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v315 שורת היסטוריית החזרות מקוצרת</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3115,7 +3115,10 @@ function pendingReturnsBannerHtml() {
 }
 
 function renderReturns() {
-  const histBar = pendingReturnsBannerHtml() || '<button data-role="ret-history" class="btn-tap w-full bg-white border-2 border-slate-200 text-slate-700 rounded-xl py-3.5 font-black text-base flex items-center justify-center gap-2 mb-3 shadow-sm"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> היסטוריית חזרות</button>';
+  // v315: הכפתור הזה הוא ניווט, לא פעולה — הוא היה גבוה כמו כפתור ראשי
+  // ודחף את החיפוש והסריקה למטה. עכשיו נמוך ודק (py-2, text-sm, מסגרת דקה).
+  // הבאנר האדום שמחליף אותו כשיש תעודות פתוחות נשאר בולט — הוא התראה.
+  const histBar = pendingReturnsBannerHtml() || '<button data-role="ret-history" class="btn-tap w-full bg-white border border-slate-200 text-slate-700 rounded-xl py-2 font-black text-sm flex items-center justify-center gap-2 mb-2 shadow-sm"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> היסטוריית חזרות</button>';
   app.innerHTML = supplierGapBannerHtml() + histBar +
     '<div class="relative mb-2">' +
       '<i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>' +
