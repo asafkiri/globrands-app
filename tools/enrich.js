@@ -87,9 +87,14 @@ function score(p, c) {
   if (bq >= 2 && c.cartonUnits) { if (bq === c.cartonUnits) { s += 0.10; why.push('ארגז'); } else s -= 0.05; }
   // מחיר קנייה מול מחיר היחידה של הספק — האות החזקה ביותר להכרעה בין
   // מוצרים שנבדלים רק בשם ("חומוס 750 צהובה" מול "חומוס 750 אחלה")
-  const pq = Number(p.price), pc = c.salePrice != null ? c.salePrice : c.unitPrice;
-  if (pq > 0 && pc > 0) {
-    const rel = Math.abs(pq - pc) / pc;
+  // המחיר השמור אצלכם יכול להיות המלא או זה שבמבצע — תלוי מתי עודכן.
+  // "גוואקמולי 220" שמור אצלכם 11.89 (מלא) ובקטלוג הוא כרגע ב-18% הנחה
+  // על 9.75; השוואה למבצע בלבד נתנה פער 22% וקנסה דווקא התאמה מושלמת.
+  // 48 מוצרים בקטלוג במבצע, ולכן בודקים מול שני המחירים ולוקחים את הקרוב.
+  const pq = Number(p.price);
+  const cands = [c.unitPrice, c.listPrice, c.salePrice].filter(v => Number(v) > 0);
+  if (pq > 0 && cands.length) {
+    const rel = Math.min.apply(null, cands.map(v => Math.abs(pq - v) / v));
     if (rel <= 0.02) { s += 0.25; why.push('מחיר'); }
     else if (rel <= 0.08) { s += 0.08; }
     else s -= 0.10;
