@@ -26,6 +26,11 @@ const ABBREV = [
   [/לל["״']?ס/g, 'ללא סוכר'], [/לל["״']?ג/g, 'ללא גלוטן'],
   [/ש\.?\s?שועל|ש["״']ש/g, 'שיבולת שועל'],
   [/ק["״']?ג\b/g, 'קילו'], [/מ["״']?ל\b/g, 'מל'], [/גר["״']?\b/g, 'גרם'],
+  // מילות אריזה בעברית מול הספרה שהספק משתמש בה: "אקטימל תות שמינייה"
+  // מול "אקטימל 8 תות". בלי זה הן נספרות כמילים מזהות שלא נפגשו, והמוצר
+  // הנכון נקנס על הבדל שהוא רק ניסוח.
+  [/שמינייה|שמיניית|שמינית/g, '8'], [/רבעייה|רביעייה|רביעיית/g, '4'],
+  [/שלישייה|שלישיית/g, '3'], [/זוג\b/g, '2'],
 ];
 const TRANSLIT = { ice: 'אייס', cake: 'קייק', not: 'נוט', milk: 'מילק', 'm*lk': 'מילק' };
 const STOP = new Set(['גרם','מל','ליטר','של','עם','בטעם','טעם','יח','קרטון','ארגז','אחוז','מארז','בודד']);
@@ -84,32 +89,108 @@ function score(p, c) {
   return { s, why };
 }
 
+// ===== התנגשות טעמים =====
+// הבאג שהריצה הראשונה חשפה: חמישה מעדני "דנונה פרו" (תות, וניל, וניל
+// עוגיות, פירות יער, 21 גרם) קיבלו כולם את המק"ט של התות. הסיבה מלמדת
+// משהו על הנתונים — לכל הטעמים של אותו מוצר יש בדיוק אותו מחיר, אותו
+// משקל ואותו ארגז, ולכן דווקא אישור המחיר, שהוא האות החזקה ביותר
+// להבחנה בין מוצרים שונים, *מחזק* התאמה שגויה בין טעמים.
+// מה שכן מבדיל הוא מילת הטעם עצמה. אם לשאילתה יש מילה מזהה שאין
+// למועמד, *וגם* למועמד יש כזאת שאין לשאילתה — "וניל" מול "תות" — אלה
+// שני פריטים שונים, כמה שהשאר יתאים.
+// מילים תיאוריות שחוזרות על עצמן בקטלוג אינן מזהות טעם ולכן לא נספרות.
+// מילים שהן תיאור אריזה או ניסוח, לא זהות המוצר. "כוסות משקה קפה קר
+// מעודן" מול "משקה קפה קר בסגנון מעודן" הוא אותו פריט — "כוסות" ו"בסגנון"
+// הן המילים היחידות שלא נפגשו, ובלי הרשימה הזאת הן נספרו כהבדל טעם.
+const GENERIC = new Set([
+  'מעדנ','משקה','גבינת','גבינה','יוגורט','בבקבוק','מועשר','מהדרינ','שרינק','פחית','כוסות','כוס',
+  'בקירור','מצונ','מצונינ','חלב','שמנת','ממרח','סלט','גר','ליטר','בטעמ','טעמ','שומנ','חלבונ','אחוז',
+  'בסגנונ','סגנונ','מארז','חסכונ','בודד','לשתיה','לשתייה','בכפית','משפחתי','קרטונ',
+]);
+const distinctive = w => w.length >= 3 && !/^\d+$/.test(w) && !GENERIC.has(w);
+function unmatchedDistinctive(from, against) {
+  return from.filter(w => distinctive(w) && !against.some(x => wordSim(w, x) >= 0.78));
+}
+// קנס, לא פסילה. ניסיתי קודם לפסול על הסף וזה חתך יותר מדי: "אקטימל תות
+// שמינייה (864 גרם)" מול "אקטימל 8 תות עם ויטמין D" הוא אותו מוצר, אבל
+// "שמינייה" מול "ויטמין" הן מילים תיאוריות שלא נפגשו — ומספיק היה זה כדי
+// לזרוק את המועמד הנכון ולהשאיר זבל במקומו. כקנס, התנהגות הקצוות נכונה:
+// טעם שונה שכל השאר בו זהה צונח מתחת לסף ויוצא לאישור ידני, ואילו התאמה
+// אמיתית עם משקל, ארגז ומחיר תואמים שורדת גם עם הפרש תיאורי.
+const VARIANT_PENALTY = 0.35;
+// צבע בשם שלכם הוא זהות הפריט, לא קישוט: "חלב אדום", "חלב כתום", "גמדים
+// סקוואיז תכלת". הקטלוג של הספק לא משתמש בצבעים אלא באחוזי שומן ובטעמים,
+// ולכן לצבע לעולם אין בן-זוג שם — ואי אפשר להסיק ממנו כלום.
+// בלי הכלל הזה "חלב אדום" קיבל בביטחון את המק"ט של 1% מועשר, כי כל שאר
+// המילים במועמד ("בבקבוק", "מועשר", "מהדרין") הן תיאוריות ולא סתרו כלום.
+// זה היה ניחוש שנראה כמו ודאות — ו"חלב כתום" נשאר בלי, כי המק"ט כבר נתפס.
+// מי שיודע מה כל צבע הוא אתם, ולכן זה תמיד יוצא לאישור ידני.
+const COLORS = new Set(['אדומ', 'כתומ', 'כחול', 'ירוק', 'צהוב', 'תכלת', 'ורוד', 'שחור', 'חומ']);
+function variantPenalty(p, c) {
+  const q = toks(p.name), t = toks(c.name);
+  const qOnly = unmatchedDistinctive(q, t);
+  if (qOnly.some(w => COLORS.has(w))) return VARIANT_PENALTY;
+  return qOnly.length > 0 && unmatchedDistinctive(t, q).length > 0 ? VARIANT_PENALTY : 0;
+}
+
 // ===== ההרצה =====
-const bySku = new Map(catalog.map(c => [c.sku, c]));
-const filled = [], ambiguous = [], nomatch = [], already = [];
+const filled = [], review = [], nomatch = [], already = [];
 let touched = 0;
 
+// שלב א: מועמדים לכל מוצר, אחרי סינון התנגשויות טעם
+const pending = [];
 for (const id of Object.keys(productDocs)) {
   const p = productDocs[id];
   if (!p || typeof p !== 'object') continue;
-  if (p.hidden) { continue; }                       // מוצרים מוסתרים — לא נוגעים
+  if (p.hidden) continue;                            // מוצרים מוסתרים — לא נוגעים
   const existing = String(p.sku == null ? '' : p.sku).replace(/\D/g, '');
   if (existing) { already.push({ id, name: p.name, sku: existing }); continue; }
 
-  const ranked = catalog.map(c => ({ c, ...score(p, c) })).sort((a, b) => b.s - a.s);
-  const [a, b] = ranked;
-  if (!a || a.s < 0.62) { nomatch.push({ id, name: p.name, price: p.price, best: a && a.c.name, s: a && +a.s.toFixed(2) }); continue; }
-  const gap = a.s - (b ? b.s : 0);
-  if (gap < 0.12) {
-    ambiguous.push({ id, name: p.name, price: p.price,
-      options: ranked.slice(0, 3).map(r => ({ sku: r.c.sku, name: r.c.name, size: r.c.size, unit: r.c.unitPrice, s: +r.s.toFixed(2), why: r.why.join('+') })) });
-    continue;
+  const ranked = catalog.map(c => {
+    const base = score(p, c);
+    const pen = variantPenalty(p, c);
+    return { c, s: base.s - pen, base: base.s, why: pen ? base.why.concat('טעם?') : base.why };
+  }).sort((a, b) => b.s - a.s);
+  pending.push({ id, p, ranked });
+}
+
+// שלב ב: שיוך גלובלי — מק"ט אחד שייך למוצר אחד בלבד.
+// בלי זה "טחינה 400 גרם" ו"חומוס עם טחינה 400 גרם" קיבלו את אותו מק"ט,
+// והמפסיד נשאר בלי — למרות שיש לו מועמד נכון משלו ברשימה.
+const pairs = [];
+pending.forEach(entry => entry.ranked.slice(0, 6).forEach(r => pairs.push({ entry, r })));
+pairs.sort((x, y) => y.r.s - x.r.s);
+const takenSku = new Set(), takenProd = new Set();
+const assigned = new Map();
+pairs.forEach(({ entry, r }) => {
+  if (takenProd.has(entry.id) || takenSku.has(r.c.sku)) return;
+  takenProd.add(entry.id); takenSku.add(r.c.sku);
+  assigned.set(entry.id, r);
+});
+
+// שלב ג: שערי ביטחון על מה ששויך
+pending.forEach(entry => {
+  const { id, p, ranked } = entry;
+  const a = assigned.get(id);
+  const alt = ranked.find(r => r !== a);
+  const opts = ranked.slice(0, 3).map(r => ({ sku: r.c.sku, name: r.c.name, size: r.c.size, unit: r.c.unitPrice, s: +r.s.toFixed(2), why: r.why.join('+') || '—' }));
+  if (!a || a.s < 0.85) {
+    // "לא נמצא" נקבע לפי הניקוד *לפני* קנס הטעם. הקנס עונה על "איזה
+    // וריאנט", לא על "האם זה בכלל המוצר": "אקטימל תות שמינייה" קיבל 0.79
+    // מול "אקטימל 8 תות עם ויטמין D" ואחרי קנס ירד ל-0.44 — ונפל ל"לא
+    // נמצא", למרות שזה בדיוק המוצר ורק צריך להכריע בינו לבין "תות בננה".
+    const bestBase = ranked.length ? Math.max(...ranked.map(r => r.base)) : 0;
+    if (bestBase < 0.55) nomatch.push({ id, name: p.name, price: p.price, best: ranked[0] && ranked[0].c.name, s: ranked[0] && +ranked[0].s.toFixed(2) });
+    else review.push({ id, name: p.name, price: p.price, options: opts });
+    return;
   }
+  if (alt && a.s - alt.s < 0.12) { review.push({ id, name: p.name, price: p.price, options: opts }); return; }
   // === הכתיבה היחידה בכל הסקריפט ===
   p.sku = a.c.sku;
   touched++;
   filled.push({ id, name: p.name, sku: a.c.sku, matched: a.c.name, s: +a.s.toFixed(2), why: a.why.join('+') || '—' });
-}
+});
+const ambiguous = review;
 
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
 fs.writeFileSync(outPath.replace(/\.json$/, '') + '-report.json',
