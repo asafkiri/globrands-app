@@ -22,7 +22,7 @@ const code =
 function build(products, marks) {
   const m = marks || {};
   const f = new Function('products', 'appOrdersFor', 'appOrderQtyOf', 'appActiveList',
-    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine, willWrite: orderPasteWillWrite, extras: orderPasteExtras };');
+    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine, willWrite: orderPasteWillWrite, extras: orderPasteExtras, diagnose: orderPasteDiagnosis };');
   return f(products || [],
     k => (m[k] ? [{ amount: m[k] }] : []),
     list => (list || []).reduce((a, x) => a + (Number(x.amount) || 0), 0),
@@ -147,6 +147,36 @@ check('תערובת — כל שורה מסווגת נכון', a.hit.map(h => h.s
 check('תערובת — נכתבים רק מה שחסר ומה שהשתנה',
   mixed.willWrite(a.hit).map(h => h.id), ['p2', 'p3']);
 check('תערובת — מה שכבר נכון לא נגע', mixed.willWrite(a.hit).some(h => h.id === 'p1'), false);
+
+// ===== עמידות למבנה העתקה שונה (מכשירי אנדרואיד/דפדפנים אחרים) =====
+
+// --- אותם שדות מופרדים בטאבים במקום בשורות
+const tabbed = 'שוקו פקק 250 מ"ל\tשוקו פקק 250 מ"ל\t341470\t261 גרם\t12 יח׳ בקרטון\t1 קרטונים\t₪\t37.92';
+check('שדות מופרדים בטאבים נקראים', api.parse(tabbed), [{ sku: '341470', name: 'שוקו פקק 250 מ"ל', qty: 1 }]);
+
+// --- שורות ריקות כפולות ו-CRLF
+check('CRLF ושורות ריקות לא שוברים',
+  api.parse(block('מוצר', '111111', 6, 2).split('\n').join('\r\n\r\n')).map(x => x.qty), [2]);
+
+// --- גרסאות של "יח׳ בקרטון"
+['6 יח בקרטון', "6 יח' בקרטון", '6 יחידות בקרטון', '6 יח״ בקרטון'].forEach(u => {
+  const t = 'מוצר\nמוצר\n123456\n250 גרם\n' + u + '\n3 קרטונים\n₪\n5';
+  check('תכולת ארגז בכתיב "' + u + '" אינה נחשבת לכמות', api.parse(t).map(x => x.qty), [3]);
+});
+
+// --- "קרטון" ביחיד, ובלי רווח
+check('"1 קרטון" ביחיד נקרא', api.parse('מוצר\nמוצר\n123456\n250 גרם\n6 יח׳ בקרטון\n1 קרטון\n₪\n5').map(x => x.qty), [1]);
+check('"2קרטונים" בלי רווח נקרא', api.parse('מוצר\nמוצר\n123456\n250 גרם\n6 יח׳ בקרטון\n2קרטונים\n₪\n5').map(x => x.qty), [2]);
+
+// ===== אבחון כישלון — כדי שיהיה אפשר לדעת מרחוק מה נשבר =====
+check('הדבקה ריקה', api.diagnose('  '), 'לא הודבק כלום.');
+check('מסך קטלוג — ההודעה מזכירה את מסך הקטלוג',
+  /מסך הקטלוג/.test(api.diagnose('סקי\nסקי\n212339\n500 גרם\n12 יח׳ בקרטון\n0\n₪\n8.37')), true);
+check('מק"טים בלי כמויות — נאמר כמה מק"טים נמצאו',
+  /נמצאו 2 מק״טים, אבל אף שורת כמות/.test(api.diagnose('111111\n222222\nשלום')), true);
+check('כמויות בלי מק"טים',
+  /נמצאו 2 שורות כמות, אבל אף מק״ט/.test(api.diagnose('1 קרטונים\n2 קרטונים')), true);
+check('טקסט זר לגמרי', /לא זוהתה אף שורת הזמנה/.test(api.diagnose('שלום מה נשמע')), true);
 
 // ===== "מסומן אצלך ואינו בהדבקה" =====
 // p9 מסומן אבל אינו בדף ההזמנה — או שהוזמן בהזמנה אחרת, או שבסוף לא הוזמן
