@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v290 סימון "הוזמן באפליקציה" לא סוגר את הרשימה</title>
+    <title>הזמנות יטבתה - v291 חיפוש בראש הרשימה — לסמן כל מוצר לפי שם או ברקוד</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -120,7 +120,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v290 סימון "הוזמן באפליקציה" לא סוגר את הרשימה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v291 חיפוש בראש הרשימה — לסמן כל מוצר לפי שם או ברקוד</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -557,6 +557,7 @@ const APP_ORDERS_KEY = 'yt_app_orders';
 const APP_ORDERS_TS_KEY = 'yt_app_orders_ts';
 let appOrdersTimer = null;
 let appOrdersLocalTs = 0;
+let appSearch = '';               // v291: חיפוש מוצר להוספה לרשימת "הוזמן באפליקציה"
 let appOrderCache = null;         // אינדקס הסימונים הפעילים — נבנה פעם אחת לכל רינדור
 
 // ===== מצב קליטת תעודות =====
@@ -847,7 +848,7 @@ function appOrdersSig(list) {
 }
 // עדכון תצוגה אחרי שינוי שהגיע ממכשיר אחר או מניקוי אוטומטי
 function refreshAppOrderUi() {
-  if (currentView === 'history') { refreshAppRows(null); return; }
+  if (currentView === 'history') { refreshAppRows(null); refreshAppPanels(); return; }
   if (currentView === 'order') {
     const a = document.activeElement;
     if (!(a && app.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT'))) rerender();
@@ -2536,6 +2537,96 @@ function appOrderDaysAgo(list) {
   const oldest = Math.min.apply(null, list.map(x => Number(x.at) || Date.now()));
   return Math.floor((Date.now() - oldest) / 86400000);
 }
+// ===== v291: חיפוש בראש הרשימה — כל מוצר במערכת, לא רק החוסרים =====
+// לא כל מה שמוזמן באפליקציה נמצא ברשימת החוסרים של ההזמנה הפתוחה. החיפוש
+// (לפי שם או ברקוד) מאפשר לסמן כל מוצר, והפאנל מרכז את כל מה שמסומן כרגע.
+function appActiveList() {
+  const idx = appOrderIndex();
+  return Object.keys(idx).map(key => {
+    const list = idx[key];
+    const p = key.indexOf('name:') === 0 ? null : products.find(x => x.id === key);
+    return {
+      key,
+      name: (p && p.name) || (list[0] && list[0].name) || key.replace(/^name:/, ''),
+      barcode: (p && p.barcode) || '',
+      qty: appOrderQtyOf(list),
+      days: appOrderDaysAgo(list)
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+}
+function appSearchMatches(q) {
+  q = (q || '').trim();
+  if (!q) return [];
+  return products.filter(p => String(p.name || '').includes(q) || String(p.barcode || '').includes(q)).slice(0, 8);
+}
+function appSearchResultsHtml() {
+  const q = (appSearch || '').trim();
+  if (!q) return '';
+  const matches = appSearchMatches(q);
+  if (!matches.length) return '<div class="p-3 text-sm text-slate-400 text-center font-bold">לא נמצא מוצר</div>';
+  const idx = appOrderIndex();
+  return matches.map(p => {
+    const on = (idx[p.id] || []).length > 0;
+    return '<button ' + (on ? '' : 'data-role="app-add" data-id="' + htmlEscape(p.id) + '" ') + 'class="w-full text-right p-2.5 border-b border-slate-100 last:border-0 flex items-center justify-between gap-2 ' + (on ? 'opacity-60' : '') + '">' +
+      '<span class="min-w-0"><span class="block font-bold text-slate-800 text-sm truncate">' + htmlEscape(p.name) + '</span>' +
+        '<span class="block text-[10px] text-slate-400"><i class="fa-solid fa-barcode"></i> ' + htmlEscape(p.barcode || 'ללא ברקוד') + '</span></span>' +
+      (on
+        ? '<span class="text-[10px] font-black text-emerald-600 shrink-0 whitespace-nowrap"><i class="fa-solid fa-check"></i> כבר מסומן</span>'
+        : '<span class="text-[10px] font-black text-blue-600 shrink-0 whitespace-nowrap"><i class="fa-solid fa-plus"></i> סמן</span>') +
+    '</button>';
+  }).join('');
+}
+function appPanelHtml(orderId) {
+  const marked = appActiveList();
+  const results = appSearchResultsHtml();
+  const rows = marked.length
+    ? marked.map(m => '<div class="flex items-center gap-2 py-1.5 border-b border-slate-100 last:border-0">' +
+        '<button data-role="app-mark" data-id="' + htmlEscape(m.key) + '" class="btn-tap shrink-0 w-6 h-6 rounded-md bg-emerald-500 text-white flex items-center justify-center"><i class="fa-solid fa-check text-[11px]"></i></button>' +
+        '<span class="min-w-0 flex-1"><span class="block text-sm font-bold text-slate-700 truncate">' + htmlEscape(m.name) + '</span>' +
+          (m.days >= 3 ? '<span class="block text-[10px] font-black text-amber-600">לפני ' + m.days + ' ימים — ועדיין לא הגיע</span>' : '') + '</span>' +
+        '<span class="shrink-0 flex items-center gap-1">' +
+          '<button data-role="app-minus" data-id="' + htmlEscape(m.key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
+          '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</span>' +
+          '<button data-role="app-plus" data-id="' + htmlEscape(m.key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
+        '</span>' +
+      '</div>').join('')
+    : '<div class="text-[11px] font-bold text-slate-400 text-center py-2">עוד לא סומן כלום. חפש מוצר למעלה, או סמן מרשימת החוסרים.</div>';
+  return '<div data-approot="' + htmlEscape(orderId || '') + '" class="bg-white border border-slate-200 rounded-xl p-3 mb-3">' +
+    '<div class="flex items-center justify-between gap-2 mb-2">' +
+      '<div class="font-black text-sm text-slate-700"><i class="fa-solid fa-mobile-screen text-blue-600"></i> הוזמן באפליקציה של יטבתה</div>' +
+      (marked.length ? '<span class="text-[11px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full shrink-0">' + marked.length + '</span>' : '') +
+    '</div>' +
+    '<div class="relative mb-2">' +
+      '<i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>' +
+      '<input data-role="app-search" type="text" inputmode="search" autocomplete="off" value="' + htmlEscape(appSearch) + '" placeholder="הוסף מוצר — שם או ברקוד..." class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pr-9 pl-3 text-sm font-bold outline-none focus:border-blue-500">' +
+    '</div>' +
+    '<div data-appres="1" class="' + (results ? '' : 'hidden ') + 'bg-white border border-slate-200 rounded-xl overflow-hidden mb-2">' + results + '</div>' +
+    rows +
+  '</div>';
+}
+function refreshAppPanels() {
+  const roots = document.querySelectorAll('#app [data-approot]');
+  for (let i = roots.length - 1; i >= 0; i--) roots[i].outerHTML = appPanelHtml(roots[i].dataset.approot);
+}
+function setAppSearch(el, val) {
+  appSearch = val || '';
+  const root = el && el.closest ? el.closest('[data-approot]') : null;
+  const box = root ? root.querySelector('[data-appres]') : null;
+  if (!box) return;
+  const html = appSearchResultsHtml();
+  box.innerHTML = html;
+  box.classList.toggle('hidden', !html);
+}
+function addAppOrderFromSearch(productId) {
+  const p = products.find(x => x.id === productId); if (!p) return;
+  if ((appOrderIndex()[p.id] || []).length) return;
+  appOrders = (appOrders || []).concat([{ key: p.id, name: p.name || '', amount: 1, at: Date.now(), fromOrderId: '' }]);
+  appSearch = '';
+  saveAppOrders();
+  buzz(18);
+  refreshAppPanels();
+  refreshAppRows(p.id);
+}
 // v290: סימון מעדכן רק את השורה עצמה. rerender מלא היה בונה מחדש את המסך
 // וסוגר את כל כרטיסי ההזמנות — המשתמש הועף מהרשימה אחרי כל סימון, במקום
 // לקבוע כמות ולהמשיך לסמן.
@@ -2564,6 +2655,7 @@ function toggleAppOrder(key, item, fromOrderId) {
   saveAppOrders();
   buzz(had ? 8 : 18);
   refreshAppRows(key);
+  refreshAppPanels();
 }
 function stepAppOrder(key, delta) {
   const list = appOrdersFor(key); if (!list.length) return;
@@ -2574,6 +2666,7 @@ function stepAppOrder(key, delta) {
   saveAppOrders();
   buzz(6);
   refreshAppRows(key);
+  refreshAppPanels();
 }
 // סימון שהסחורה שלו הגיעה כבר עשה את שלו — יורד מהרשימה כדי שלא תתנפח
 function appOrdersSweep() {
@@ -2660,7 +2753,7 @@ function renderHistory() {
             '<div class="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-full text-sm shrink-0">' + ((o.items || []).length) + ' פריטים</div>' +
           '</div>' +
         '</summary>' +
-        '<div class="px-4 pb-4 border-t border-slate-100 pt-3">' + missingBlock + '<ul class="space-y-2">' + items + '</ul>' +
+        '<div class="px-4 pb-4 border-t border-slate-100 pt-3">' + appPanelHtml(o.id) + missingBlock + '<ul class="space-y-2">' + items + '</ul>' +
           '<button data-role="resend" data-id="' + o.id + '" class="btn-tap mt-3 w-full bg-green-50 text-green-700 font-black py-2.5 rounded-xl flex items-center justify-center gap-2"><i class="fa-brands fa-whatsapp"></i> שלח שוב</button>' +
         '</div>' +
       '</details>';
@@ -16381,6 +16474,7 @@ $('contactList').addEventListener('click', (e) => { const b = e.target.closest('
 app.addEventListener('input', (e) => {
   const t = e.target; const role = t.getAttribute && t.getAttribute('data-role');
   if (role === 'device-name') { setDeviceNameLocal(t.value); return; }
+  if (role === 'app-search') { setAppSearch(t, t.value); return; } // v291
   if (t.id === 'returnsSearch') { renderReturnsResults(t.value); return; }
   if (t.id === 'retDigits') { refreshReturnsDigits(t.value); return; }
   if (t.id === 'priceSearch') { priceQuery = t.value; refreshPricesList(priceQuery); return; }
@@ -16704,6 +16798,7 @@ app.addEventListener('click', (e) => {
   }
   else if (role === 'app-minus') stepAppOrder(id, -1);
   else if (role === 'app-plus') stepAppOrder(id, 1);
+  else if (role === 'app-add') addAppOrderFromSearch(id); // v291: הוספה מהחיפוש
   else if (role === 'ret-add') addReturn(id);
   else if (role === 'ret-scan') openReturnsScanner();
   else if (role === 'ret-digits-pick') returnsDigitsPick(id);
