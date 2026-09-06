@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v288 הזמנה — "הוזמן באפליקציה" מסמן את המוצר באדום</title>
+    <title>הזמנות יטבתה - v289 סרגל החזרה עבר לכותרת — לא קופץ יותר בגלילה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -99,6 +99,15 @@
         </div>
       </div>
 
+      <!-- v289: סרגל חזרה — בכותרת הדביקה, באותו מקום של לשוניות המצב.
+           קודם הוא היה fixed בתחתית המסך, ובאייפון הוא קפץ מעלה־מטה בכל
+           פעם שסרגל הדפדפן הצטמצם או התרחב בזמן גלילה. -->
+      <div id="backTabs" class="hidden max-w-3xl mx-auto px-4 pb-2">
+        <button id="backToOrder" class="btn-tap w-full bg-white/15 border border-white/25 text-white rounded-xl py-2.5 font-black flex items-center justify-center gap-2">
+          <i class="fa-solid fa-chevron-right"></i> חזרה להזמנה
+        </button>
+      </div>
+
       <!-- חיפוש -->
       <div id="searchWrap" class="max-w-3xl mx-auto px-4 pb-3">
         <div class="relative">
@@ -111,20 +120,13 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v288 הזמנה — "הוזמן באפליקציה" מסמן את המוצר באדום</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v289 סרגל החזרה עבר לכותרת — לא קופץ יותר בגלילה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
       <button id="cartBtn" class="btn-tap pointer-events-auto hidden items-center gap-3 px-8 py-4 rounded-full shadow-2xl bg-blue-600 text-white">
         <i class="fa-solid fa-paper-plane text-lg"></i>
         <span class="font-black text-lg"><span id="cartLabel">סיום הזמנה</span> (<span id="cartCount">0</span>)</span>
-      </button>
-    </div>
-
-    <!-- סרגל חזרה (במסכים שאינם הזמנה) -->
-    <div id="backBar" class="hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 flex justify-center z-20">
-      <button id="backToOrder" class="btn-tap bg-blue-100 text-blue-700 px-6 py-3 rounded-xl font-black flex items-center gap-2 w-full max-w-sm justify-center">
-        <i class="fa-solid fa-chevron-right"></i> חזרה להזמנה
       </button>
     </div>
 
@@ -1249,7 +1251,10 @@ function renderView() {
   const isMain = isOrder || isReturns || isReceiving || isManage;
   $('searchWrap').style.display = isOrder ? '' : 'none';
   $('modeTabs').style.display = isMain ? '' : 'none';
-  $('backBar').classList.toggle('hidden', isMain);
+  $('backTabs').classList.toggle('hidden', isMain);
+  // הריפוד התחתון נדרש רק בגלל כפתור הסיום הצף שבמסכים הראשיים
+  document.body.classList.toggle('pb-28', isMain);
+  document.body.classList.toggle('pb-10', !isMain);
   updateModeTabs();
   if (isOrder) renderOrder();
   else if (isReturns) renderReturns();
@@ -1280,6 +1285,7 @@ function renderView() {
 }
 function updateBackBarLabel() {
   const b = $('backToOrder'); if (!b) return;
+  // (v289: הכפתור יושב בכותרת; הטקסט מתעדכן לפי המסך הראשי שחוזרים אליו)
   const txt = (currentView === 'trash' || currentView === 'health' || currentView === 'backup' || currentView === 'actionLog') ? 'חזרה להגדרות' : (mainMode === 'returns' ? 'חזרה לחזרות' : (mainMode === 'receiving' ? 'חזרה לקליטה' : (mainMode === 'manage' ? 'חזרה לניהול' : 'חזרה להזמנה')));
   b.innerHTML = '<i class="fa-solid fa-chevron-right"></i> ' + txt;
 }
