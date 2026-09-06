@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v305 חוזרים מהספק והאפליקציה שואלת אם הוזמן</title>
+    <title>הזמנות יטבתה - v306 קליטה בלי תעודה, והנייר מצטרף כשהוא מגיע</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v305 חוזרים מהספק והאפליקציה שואלת אם הוזמן</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v306 קליטה בלי תעודה, והנייר מצטרף כשהוא מגיע</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -604,6 +604,11 @@ let receiptNoteTotal = null;     // סכום התעודה מהספק (ללא מ�
 let receiptNotes = [];           // פירוט סכומי תעודות הספק (למקרה שהמשלוח מחולק)
 let editingNotes = false;        // עריכת סכומי התעודות במסך פתוח
 let receiptOpened = false;       // האם נפתחה תעודה (שער לפני סריקה)
+// v306: קליטה בלי תעודה. הספק לא הביא נייר, או שהנייר אבד — קולטים לפי
+// ספירה בלבד. התעודה נשמרת פתוחה עד שהנייר יגיע, ואז מקלידים את העוגנים
+// והבדיקה הרגילה (כולל סריקת AI כשיש פער) רצה מול הספירה שכבר נעשתה.
+let receiptNoDoc = false;        // הקליטה הנוכחית נפתחה בלי תעודה
+let receiptAttachTarget = null;  // צירוף נייר לקליטה שכבר נשמרה בלי תעודה
 let receiptDepositWaived = false; // v232: התעודה לא חייבה פיקדון — שורות הפיקדון הנגזרות הוסרו לתעודה זו
 let reconcileData = null;        // נתוני מסך השוואת תעודה
 // v178: האם באמת הוזנו נתוני נייר (הקלדה ידנית / החלת סריקת AI) על noteQty.
@@ -1003,7 +1008,7 @@ function readNoteEntry(required, onWaive) {
 // ונשארות בזיכרון בלבד כפי שהוחלט מלכתחילה. אחרי שחזור אפשר להמשיך לעבוד
 // על התוצאות; מה שיידרש צילום מחדש הוא רק סריקה חדשה של אותו נייר.
 function receiptDraftPayload(includeScan) {
-  const base = { items: receiptList, notes: receiptNotes, opened: receiptOpened, dw: receiptDepositWaived, uw: receiptUnitsWaived };
+  const base = { items: receiptList, notes: receiptNotes, opened: receiptOpened, dw: receiptDepositWaived, uw: receiptUnitsWaived, noDoc: receiptNoDoc, attach: receiptAttachTarget };
   if (includeScan && aiScanResponse && aiScanResponse.scan) {
     base.aiScan = {
       serviceVersion: aiScanResponse.serviceVersion || null,
@@ -1056,6 +1061,9 @@ function restoreReceiptDraft() {
       receiptOpened = !!o.opened || receiptList.length > 0;
       receiptDepositWaived = !!o.dw; // v232
       receiptUnitsWaived = !!o.uw;   // v274: ההצהרה שורדת רענון, כמו שאר הטיוטה
+      // v306: קליטה בלי תעודה, וצירוף נייר לקליטה כזאת, שורדים ריענון וניתוק
+      receiptNoDoc = !!o.noDoc;
+      receiptAttachTarget = (o.attach && typeof o.attach === 'object' && o.attach.id) ? o.attach : null;
     }
     recomputeNoteTotal();
     // v272: אחרי recomputeNoteTotal — שחזור הקריאה נשען על העוגנים המחושבים.
@@ -1349,7 +1357,9 @@ function updateBackBarLabel() {
 function supplierGaps() {
   const rec = receiptsBalance();
   const ret = returnsBalance();
-  const openRecs = receipts.filter(r => receiptDiscrepancyInfo(r).open).length;
+  // v306: קליטה שממתינה לנייר פתוחה — אבל לא בגלל הפרש. שורה משלה.
+  const noDocRecs = receipts.filter(receiptAwaitingDoc).length;
+  const openRecs = receipts.filter(r => receiptDiscrepancyInfo(r).open && !receiptAwaitingDoc(r)).length;
   const lines = [];
   if (rec.bal > 0.5) lines.push({ view: 'receiptsHistory', icon: 'fa-scale-unbalanced', text: 'הספק חייב לך ₪' + fmtMoney(rec.bal) + ' בסחורה', owed: true });
   else if (rec.bal < -0.5) lines.push({ view: 'receiptsHistory', icon: 'fa-scale-unbalanced-flip', text: 'קיבלת ₪' + fmtMoney(-rec.bal) + ' בסחורה מעבר לתעודות', owed: false });
@@ -1357,7 +1367,9 @@ function supplierGaps() {
   else if (ret.bal < -0.5) lines.push({ view: 'returnsHistory', icon: 'fa-rotate-left', text: 'זוכית ₪' + fmtMoney(-ret.bal) + ' יותר מדי על חזרות', owed: false });
   if (openRecs && !lines.some(l => l.view === 'receiptsHistory'))
     lines.push({ view: 'receiptsHistory', icon: 'fa-clipboard-question', text: openRecs + ' תעודות עם הפרש פתוח', owed: true });
-  return { lines, openRecs, recBal: rec.bal, retBal: ret.bal };
+  if (noDocRecs)
+    lines.push({ view: 'receiptsHistory', icon: 'fa-file-circle-xmark', text: noDocRecs === 1 ? 'קליטה אחת בלי תעודה — ממתינה לנייר' : noDocRecs + ' קליטות בלי תעודה — ממתינות לנייר', owed: false });
+  return { lines, openRecs, noDocRecs, recBal: rec.bal, retBal: ret.bal };
 }
 function supplierGapBannerHtml() {
   const g = supplierGaps();
@@ -2200,7 +2212,9 @@ function buildSystemHealth() {
   const dupBc = duplicateBarcodeGroups();
   const badContacts = contacts.filter(c => normalizePhoneDigits(c.phone).length < 9);
   const drafts = healthDraftCounts();
-  const openReceipts = receipts.filter(rc => receiptDiscrepancyInfo(rc).open);
+  // v306: קליטה בלי תעודה פתוחה — אבל לא בגלל הפרש. היא נספרת בשורה משלה
+  const noDocReceipts = receipts.filter(receiptAwaitingDoc);
+  const openReceipts = receipts.filter(rc => receiptDiscrepancyInfo(rc).open && !receiptAwaitingDoc(rc));
   const now = new Date();
   const cloudOk = !!(db && auth && auth.currentUser && navigator.onLine);
   const items = [];
@@ -2295,6 +2309,14 @@ function buildSystemHealth() {
     text: openReceipts.length ? ('יש ' + openReceipts.length + ' תעודות קליטה עם חוסר/עודף שלא נסגר.') : 'אין תעודות קליטה עם הפרש פתוח.',
     detail: openReceipts.length ? ('מאזן פתוח: ₪' + fmtMoney(receiptsBalance().bal)) : '',
     actionRole: openReceipts.length ? 'health-go-receipts' : null,
+    actionText: 'תעודות'
+  });
+  items.push({
+    status: noDocReceipts.length ? 'warn' : 'ok',
+    title: 'קליטות בלי תעודה',
+    text: noDocReceipts.length ? ('יש ' + noDocReceipts.length + ' קליטות שנעשו לפי ספירה בלבד וממתינות לנייר מהספק.') : 'אין קליטות שממתינות לתעודה.',
+    detail: noDocReceipts.length ? ('הישנה ביותר: ' + dDisp(noDocReceipts.slice().sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0))[0].date)) : '',
+    actionRole: noDocReceipts.length ? 'health-go-receipts' : null,
     actionText: 'תעודות'
   });
   items.push({
@@ -5084,8 +5106,14 @@ function promoDiscountAmount(pr, dateStr) {
   });
   return r2(total);
 }
+// v306: תאריך הקליטה הפעילה. בקליטה רגילה זה היום; בצירוף נייר לקליטה
+// שנעשתה בלי תעודה זה היום שבו הסחורה הגיעה — אחרת מחיר או מבצע שהשתנו
+// בינתיים היו יוצרים פער מדומה מול נייר שמתאר את אותו יום.
+function activeReceiptDate() {
+  return (receiptAttachTarget && receiptAttachTarget.date) || todayStr();
+}
 function receiptSavings() {
-  const day = todayStr(); let s = 0;
+  const day = activeReceiptDate(); let s = 0;
   receiptList.forEach(it => {
     const p = products.find(x => x.id === it.productId), qty = Number(it.qty) || 0;
     s += lineTotalFromUnit(Number(p && p.price) || 0, qty) - effectiveLineTotal(p, qty, day);
@@ -5094,7 +5122,7 @@ function receiptSavings() {
 }
 // סטטוס כל מבצע פעיל שיש לו מוצרים בתעודה
 function receiptPromoStatuses() {
-  const day = todayStr(); const seen = {}; const out = [];
+  const day = activeReceiptDate(); const seen = {}; const out = [];
   receiptList.forEach(it => {
     const pr = promoForProduct(it.productId, day);
     if (pr && promoActive(pr, day) && !seen[pr.id]) {
@@ -5140,7 +5168,7 @@ function monthEndPromoForProduct(pid, dateStr) {
 }
 // סטטוס הנחות מרכזת בתעודה הנוכחית (לתצוגה בלבד — לא משפיע על סכום התעודה)
 function receiptMonthEndStatuses() {
-  const day = todayStr(); const seen = {}; const out = [];
+  const day = activeReceiptDate(); const seen = {}; const out = [];
   receiptList.forEach(it => {
     const pr = monthEndPromoForProduct(it.productId, day);
     if (pr && !seen[pr.id]) {
@@ -5176,7 +5204,7 @@ function receivingDepositRowsHtml() {
   '</div>').join('');
 }
 function receiptTotals() {
-  const day = todayStr();
+  const day = activeReceiptDate();
   let ex = 0, productUnits = 0, depositUnits = 0;
   receiptList.forEach(it => { const p = products.find(x => x.id === it.productId); ex += effectiveLineTotal(p, it.qty, day); productUnits += Number(it.qty) || 0; });
   receivingDepositLines().forEach(dep => { ex += dep.total; depositUnits += dep.qty; }); // v173+v175
@@ -5351,7 +5379,7 @@ function addScannedToReturns(p) {
 // מכוון להשלמת מחיר חסר בלבד — כשכבר יש מחיר קופה מוצג הסכום הגדול כמו קודם,
 // ושינוי שלו נשאר במסך המחירים במסך המחירים.
 function qtyPosMissingHtml(p) {
-  const day = todayStr();
+  const day = activeReceiptDate();
   const pr = promoForProduct(p.id, day);
   const onPromo = promoTriggered(pr, day);
   const hasCost = p.price != null && p.price !== '';
@@ -5520,23 +5548,57 @@ function renderManage() {
 }
 
 // --- מסך התעודה הנוכחית ---
+// v306: הדלת של מקרי הקיצון. היא יושבת מתחת למסלול הרגיל ולא לצידו —
+// קליטה בלי נייר היא קליטה שאין מי שיאמת אותה, וזו לא צריכה להיות הדרך
+// הקצרה בבוקר עמוס.
+function receivingNoDocGateHtml() {
+  if (receiptAttachTarget) return '';
+  return '<div class="mt-4 pt-3 border-t border-slate-200">' +
+    '<button data-role="rc-open-nodoc" class="btn-tap w-full bg-white border-2 border-amber-300 text-amber-800 rounded-2xl py-3 font-black text-sm flex items-center justify-center gap-2"><i class="fa-solid fa-file-circle-xmark"></i> אין תעודה בכלל — קלוט לפי ספירה</button>' +
+    '<div class="text-[11px] text-slate-500 font-bold text-center mt-1.5 leading-relaxed">סורקים את כל מה שהגיע וסוגרים כרגיל. התעודה נשמרת <b class="text-amber-700">פתוחה</b>, וכשהנייר יגיע מקלידים את העוגנים מכרטיס התעודה והבדיקה רצה מול הספירה הזאת.</div>' +
+  '</div>';
+}
+// v306: המסך בזמן צירוף נייר לקליטה שנשמרה בלי תעודה. השורות כבר בפנים —
+// מה שחסר הוא רק הנייר.
+function receivingAttachBannerHtml() {
+  if (!receiptAttachTarget) return '';
+  return '<div class="rounded-2xl bg-amber-50 border-2 border-amber-300 p-3 mb-3">' +
+    '<div class="font-black text-amber-900 text-sm"><i class="fa-solid fa-paperclip"></i> צירוף תעודה לקליטה מ-' + htmlEscape(receiptAttachTarget.label || '') + '</div>' +
+    '<div class="text-[11px] font-bold text-amber-800 leading-relaxed mt-0.5">' + receiptList.length + ' שורות מהספירה כבר בפנים. הזן את נתוני התעודה — מכאן זו קליטה רגילה לגמרי, והבדיקה תרוץ מול מה שנספר אז.</div>' +
+    '<button data-role="rc-attach-cancel" class="btn-tap w-full mt-2 bg-white border border-amber-300 text-amber-800 rounded-xl py-2 font-black text-xs">בטל צירוף — התעודה תישאר ממתינה לנייר</button>' +
+  '</div>';
+}
 function renderReceiving() {
   const t = receiptTotals();
-  const opened = receiptOpened || receiptList.length > 0;
+  // v306: בזמן צירוף נייר השורות כבר בפנים, ולכן "יש שורות" אינו מעיד עוד
+  // שהתעודה נפתחה — השער נמדד בעוגנים, בדיוק כמו בקליטה חדשה.
+  const opened = receiptAttachTarget ? receiptOpened : (receiptOpened || receiptList.length > 0);
   const banner = supplierGapBannerHtml();
   // v279: כלי הניהול עברו לטאב "ניהול" משלהם בשורת המצבים — מסך הקליטה נשאר נקי
   const topButtons = '';
   if (!opened) {
-    app.innerHTML = banner + pendingReturnsBannerHtml() + topButtons +
+    app.innerHTML = banner + pendingReturnsBannerHtml() + topButtons + receivingAttachBannerHtml() +
       '<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mt-2">' +
         '<div class="grid grid-cols-3 gap-1 mb-4 text-center text-xs font-black"><div class="bg-blue-600 text-white rounded-lg py-2">1 · נתוני תעודה</div><div class="bg-slate-100 text-slate-400 rounded-lg py-2">2 · סריקה</div><div class="bg-slate-100 text-slate-400 rounded-lg py-2">3 · בדיקה</div></div>' +
         '<div class="text-center mb-3"><i class="fa-solid fa-file-invoice text-blue-600 text-4xl mb-2"></i><div class="font-black text-slate-800 text-lg">נתוני התעודה</div><div class="text-sm text-slate-500">הזן את הסכום ללא מע״מ ואת סך היחידות שמודפס בתעודה.</div></div>' +
         noteEditorBodyHtml() +
         '<button data-role="rc-open" class="btn-tap w-full bg-blue-600 text-white rounded-2xl py-4 font-black text-lg flex items-center justify-center gap-2 mt-4"><i class="fa-solid fa-arrow-left"></i> התחל קליטה</button>' +
+        receivingNoDocGateHtml() +
       '</div>';
     return;
   }
-  const noteBar = editingNotes
+  // v306: בקליטה בלי תעודה אין מה לערוך ואין מול מה להשוות — הסרגל אומר
+  // את זה במפורש, כדי שאיש לא יחשוב שהמספר שעל המסך אומת מול נייר.
+  const noteBar = (receiptNoDoc && !receiptNotes.length && !editingNotes)
+    ? '<div class="bg-amber-50 rounded-2xl border-2 border-amber-300 p-3 shadow-sm mb-3">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          '<div class="min-w-0"><div class="font-black text-amber-900 text-sm"><i class="fa-solid fa-file-circle-xmark"></i> קליטה בלי תעודה</div>' +
+          '<div class="text-[11px] font-bold text-amber-800 leading-relaxed mt-0.5">הסכום מחושב מהמחירון לפי מה שתסרוק. התעודה תישמר פתוחה עד שהנייר יגיע.</div></div>' +
+          '<button data-role="rc-cancel" class="btn-tap shrink-0 text-xs font-bold text-red-500 bg-white border border-red-200 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-xmark"></i></button>' +
+        '</div>' +
+        '<button data-role="rc-nodoc-found" class="btn-tap w-full mt-2 bg-white border border-amber-300 text-amber-800 rounded-xl py-2 font-black text-xs"><i class="fa-solid fa-file-invoice"></i> מצאתי את התעודה — הזן את המספרים</button>' +
+      '</div>'
+    : editingNotes
     ? '<div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm mb-3">' +
         '<div class="flex items-center justify-between mb-2"><span class="font-black text-slate-800 text-sm"><i class="fa-solid fa-file-invoice text-blue-600"></i> תעודות ספק</span><button data-role="rc-notes-done" class="btn-tap text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">סיום</button></div>' +
         // v250: ההסבר מהסריקה מלווה את התיקון — הסכום הנכון מול העיניים בזמן ההקלדה
@@ -5617,7 +5679,7 @@ function refreshReceiptTotals() {
 }
 function buildReceiptRow(it) {
   const p = products.find(x => x.id === it.productId);
-  const day = todayStr();
+  const day = activeReceiptDate();
   const unit = p ? effectivePrice(p, it.qty, day) : 0;
   const shelfRec = shelfRecommendedPrice(p);
   const shelfRecTag = shelfRec != null ? '<span class="font-bold text-emerald-700">· מומלץ: ₪' + fmtMoney(shelfRec) + '</span>' : '';
@@ -5739,19 +5801,23 @@ function finishReceipt() {
   // להמשיך בלי סך יחידות היא ההצהרה המפורשת של v274 — גם לטיוטה ישנה
   // שנוצרה בזמן ש-v270 איפשר להשאיר את השדה ריק בשקט.
   const amountsReady = receiptNotes.length > 0 && receiptNotes.every(raw => normNote(raw).amount > 0);
-  if (!amountsReady || receiptNoteTotal == null) {
+  // v306: קליטה בלי תעודה — אין נייר ולכן אין עוגנים. זו אינה עקיפה של
+  // הבדיקה אלא דחייה שלה: התעודה תישמר פתוחה, והבדיקה תרוץ במלואה כשהנייר
+  // יגיע ויצורף אליה. מספר שהוקלד באמצע מחזיר את הקליטה למסלול הרגיל.
+  const savingNoDoc = receiptNoDoc && !receiptNotes.length;
+  if (!savingNoDoc && (!amountsReady || receiptNoteTotal == null)) {
     editingNotes = true;
     showToast('לפני האישור חובה להזין לכל תעודה סכום ללא מע״מ', null, null, 3800);
     refreshReceipt();
     return;
   }
-  if (receiptNoteUnits == null && !receiptUnitsWaived) {
+  if (!savingNoDoc && receiptNoteUnits == null && !receiptUnitsWaived) {
     editingNotes = true;
     refreshReceipt();
     askUnitsWaiver(finishReceipt);
     return;
   }
-  const day = todayStr();
+  const day = activeReceiptDate();
   const lines = receiptList.map(it => {
     const p = products.find(x => x.id === it.productId);
     const unit = effectivePrice(p, it.qty, day);
@@ -5768,7 +5834,7 @@ function finishReceipt() {
   const scannedUnits = lines.reduce((a, l) => a + (l.isDeposit ? 0 : (Number(l.qty) || 0)), 0); // v176: פיקדון בכסף בלבד
   const progressMoneyTarget = receiptProgressMoneyTarget();
   if (!receiptDupConfirmed) {
-    const dup = receipts.find(r => r.date === day && (Number(r.count) || 0) === lines.length && Math.abs((Number(r.totalExVat) || 0) - ex) <= 1);
+    const dup = receipts.find(r => !(receiptAttachTarget && r.id === receiptAttachTarget.id) && r.date === day && (Number(r.count) || 0) === lines.length && Math.abs((Number(r.totalExVat) || 0) - ex) <= 1);
     if (dup) { showConfirm('אולי כפילות', 'כבר קיימת תעודה מ-' + dDisp(day) + ' בסכום דומה (₪' + fmtMoney(ex) + ' · ' + lines.length + ' מוצרים). ייתכן שכבר קלטת אותה — לשמור בכל זאת?', 'כן, שמור בכל זאת', function () { receiptDupConfirmed = true; finishReceipt(); }); return; }
   }
   const unitsMismatch = receiptNoteUnits != null && scannedUnits !== receiptNoteUnits;
@@ -5813,17 +5879,18 @@ function finishReceipt() {
     '</div>';
   }
   $('rsBody').innerHTML =
+    (savingNoDoc ? '<div class="rounded-xl bg-amber-50 border-2 border-amber-300 p-3 mb-3 text-xs font-bold text-amber-900 leading-relaxed"><span class="font-black"><i class="fa-solid fa-file-circle-xmark"></i> אין תעודה — נשמר לפי ספירה.</span> הסכום מחושב מהמחירון ולא אומת מול נייר. התעודה תישמר <b>פתוחה</b>, וכשהנייר יגיע תזין את נתוניו מכרטיס התעודה בהיסטוריה והבדיקה תרוץ מול הספירה הזאת.</div>' : '') +
     '<div class="bg-slate-50 rounded-xl p-3 max-h-56 overflow-y-auto border border-slate-100 mb-3">' + listHtml + '</div>' +
     (receiptSavings() > 0 ? '<div class="flex items-center justify-between text-rose-600 font-bold mb-1"><span><i class="fa-solid fa-tag"></i> כולל הנחת מבצע</span><span>₪' + fmtMoney(receiptSavings()) + '</span></div>' : '') +
     (roundingAdjustment ? '<div class="flex items-center justify-between text-[11px] text-blue-700 font-bold mt-1"><span><i class="fa-solid fa-calculator"></i> התאמת עיגול תעודה</span><span>' + (roundingAdjustment > 0 ? '+' : '−') + '₪' + fmtMoney(Math.abs(roundingAdjustment)) + '</span></div>' : '') +
     '<div class="flex items-center justify-between text-slate-900 font-black text-xl mt-2 pt-2 border-t border-slate-200"><span>סה"כ (ללא מע"מ)</span><span>₪' + fmtMoney(payableEx) + '</span></div>' + meBlock;
-  pendingReceipt = { lines, ex: payableEx, calculatedEx: ex, roundingAdjustment, noteTotal: receiptNoteTotal, status: 'ok', noteParts: receiptNotes.slice() };
+  pendingReceipt = { lines, ex: payableEx, calculatedEx: ex, roundingAdjustment, noteTotal: receiptNoteTotal, status: savingNoDoc ? 'open' : 'ok', noDoc: savingNoDoc, noteParts: receiptNotes.slice() };
   const m = $('receiptSummaryModal'); m.classList.remove('hidden'); m.classList.add('flex');
 }
 function hideReceiptSummary() { const m = $('receiptSummaryModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
 // ===== מסך השוואת תעודה (חוסר/עודף) =====
 function openReconcile() {
-  const day = todayStr();
+  const day = activeReceiptDate();
   reconcileData = receiptList.map(it => {
     const p = products.find(x => x.id === it.productId);
     const base = r2(Number(p && p.price) || 0);
@@ -12111,22 +12178,63 @@ async function saveReceiptFix() {
   else if (offRc && findOffsetMatch(offRc)) showToast('💡 זוהה קיזוז אפשרי מול תעודה קודמת — ראה בכרטיס התעודה', null, null, 3500);
   else showToast(open ? 'נשמר — עדיין נותר הפרש' : 'התעודה תוקנה ✓', null, null, 2000);
 }
+// v306: הנייר הגיע. הקליטה שנשמרה בלי תעודה חוזרת להיות הטיוטה הפתוחה —
+// עם אותו מזהה, כך שהשמירה בסוף דורסת את אותה תעודה ולא יוצרת שנייה —
+// והמסך חוזר לשלב 1. מכאן ואילך זו קליטה רגילה לחלוטין: מקלידים את
+// העוגנים, וכל מכונת ההשוואה — הבלש, מסך ההפרשים וסריקת ה-AI — רצה מול
+// הספירה שכבר נעשתה.
+function reopenReceiptForDoc(id) {
+  const rc = receipts.find(x => x.id === id); if (!rc) return;
+  if (receiptOpened || receiptList.length || receiptNotes.length) {
+    showToast('יש קליטה פתוחה על המסך — סיים או בטל אותה לפני צירוף תעודה', null, null, 4200);
+    return;
+  }
+  const lines = (rc.items || [])
+    .filter(l => !l.isDeposit && String(l.productId || '').indexOf('deposit-') !== 0)
+    .map(l => ({ productId: l.productId, name: l.name || '', barcode: l.barcode || '', qty: Number(l.qty) || 0 }))
+    .filter(l => l.qty > 0);
+  if (!lines.length) { showToast('אין שורות בתעודה הזאת', null, null, 2600); return; }
+  receiptList = lines;
+  receiptAttachTarget = { id: rc.id, timestamp: Number(rc.timestamp) || Date.now(), date: rc.date || todayStr(), label: dDisp(rc.date || todayStr()) };
+  receiptNotes = []; recomputeNoteTotal();
+  receiptNoDoc = false; receiptOpened = false; editingNotes = false;
+  anchorFixHint = ''; reconcileData = null;
+  receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false;
+  resetAiInvoiceScan(true); aiScanDocuments = [];
+  saveReceiptDraft();
+  setView('receiving');
+}
+function cancelReceiptAttach() {
+  receiptList = []; receiptNotes = []; recomputeNoteTotal();
+  receiptAttachTarget = null; receiptNoDoc = false; receiptOpened = false; editingNotes = false;
+  anchorFixHint = ''; reconcileData = null;
+  receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false;
+  resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft();
+  setView('receiptsHistory');
+  showToast('הצירוף בוטל — התעודה נשארה ממתינה לנייר', null, null, 2800);
+}
 async function confirmReceipt() {
   if (!pendingReceipt) { hideReceiptSummary(); return; }
-  const { lines, ex, calculatedEx, roundingAdjustment, grossEx, supplierDiscount, supplierPromoItems, supplierPromoMismatchItems, supplierCreditClaim, aiAudit, noteTotal, status, noteParts, unresolvedAmountGap, unresolvedUnitsGap } = pendingReceipt;
-  const opId = pendingReceipt.operationId || (pendingReceipt.operationId = makeOperationId('receipt'));
+  const { lines, ex, calculatedEx, roundingAdjustment, grossEx, supplierDiscount, supplierPromoItems, supplierPromoMismatchItems, supplierCreditClaim, aiAudit, noteTotal, status, noDoc, noteParts, unresolvedAmountGap, unresolvedUnitsGap } = pendingReceipt;
+  // v306: צירוף נייר דורס את אותה תעודה עצמה (אותו מזהה) ואינו יוצר שנייה.
+  // תאריך הקליטה המקורי נשמר — התעודה יושבת בהיסטוריה ביום שבו הסחורה
+  // הגיעה, לא ביום שבו הנייר הגיע.
+  const attach = receiptAttachTarget;
+  const opId = (attach && attach.id) || pendingReceipt.operationId || (pendingReceipt.operationId = makeOperationId('receipt'));
   const creditClaim = supplierCreditClaim ? { ...cloneSafe(supplierCreditClaim), createdAt: supplierCreditClaim.createdAt || Date.now() } : null;
-  const data = { timestamp: Date.now(), date: todayStr(), items: lines, count: lines.length, totalExVat: ex, totalIncVat: ex, calculatedExVat: (calculatedEx != null ? calculatedEx : ex), roundingAdjustment: r2(Number(roundingAdjustment) || 0), grossExVat: (grossEx != null ? grossEx : (calculatedEx != null ? calculatedEx : ex)), supplierDiscount: r2(Number(supplierDiscount) || 0), supplierPromoItems: (Array.isArray(supplierPromoItems) ? supplierPromoItems : []), supplierPromoMismatchItems: (Array.isArray(supplierPromoMismatchItems) ? supplierPromoMismatchItems : []), supplierCreditClaim: creditClaim, aiAudit: aiAudit ? cloneSafe(aiAudit) : null, noteTotalInc: (noteTotal != null ? noteTotal : null), noteParts: (Array.isArray(noteParts) ? noteParts : []), unresolvedAmountGap: r2(Number(unresolvedAmountGap) || 0), unresolvedUnitsGap: Number(unresolvedUnitsGap) || 0, status: status || 'ok', operationId: opId };
+  const data = { timestamp: (attach && Number(attach.timestamp)) || Date.now(), date: (attach && attach.date) || todayStr(), noDoc: !!(noDoc || attach), items: lines, count: lines.length, totalExVat: ex, totalIncVat: ex, calculatedExVat: (calculatedEx != null ? calculatedEx : ex), roundingAdjustment: r2(Number(roundingAdjustment) || 0), grossExVat: (grossEx != null ? grossEx : (calculatedEx != null ? calculatedEx : ex)), supplierDiscount: r2(Number(supplierDiscount) || 0), supplierPromoItems: (Array.isArray(supplierPromoItems) ? supplierPromoItems : []), supplierPromoMismatchItems: (Array.isArray(supplierPromoMismatchItems) ? supplierPromoMismatchItems : []), supplierCreditClaim: creditClaim, aiAudit: aiAudit ? cloneSafe(aiAudit) : null, noteTotalInc: (noteTotal != null ? noteTotal : null), noteParts: (Array.isArray(noteParts) ? noteParts : []), unresolvedAmountGap: r2(Number(unresolvedAmountGap) || 0), unresolvedUnitsGap: Number(unresolvedUnitsGap) || 0, status: status || 'ok', operationId: opId };
   const saved = await runCloudTask('save receipt before clearing draft', { op: 'set', path: dataPath('receipts', opId), data, operationId: opId });
   if (!saved) return;
   hideReceiptSummary();
   aiCloseOrientationReview();
-  receiptList = []; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; saveReceiptDraft();
+  receiptList = []; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; saveReceiptDraft();
   setView('receiptsHistory');
   const autoApplied = await autoApplyExactOffsets(); // v249: זוג מדויק מתקזז לבד
   const newOpen = receipts.filter(r => receiptDiscrepancyInfo(r).open).find(r => findOffsetMatch(r));
   if (autoApplied.length) showToast(autoOffsetToastText(autoApplied), null, null, 4200);
   else if (newOpen) showToast('💡 זוהה קיזוז אפשרי מול תעודה קודמת — ראה בכרטיס התעודה', null, null, 3500);
+  else if (noDoc && !attach) showToast('נקלט לפי ספירה — התעודה פתוחה עד שיגיע הנייר', null, null, 3600);
+  else if (attach) showToast('התעודה צורפה ונבדקה ✓', null, null, 2600);
   else showToast('התעודה נקלטה ✓', null, null, 2200);
 }
 async function delReceipt(id) {
@@ -12256,8 +12364,16 @@ function consumeStoredReceiptOffsets(rc, shortItems, overItems) {
   });
   return applied;
 }
+// v306: קליטה שנשמרה בלי תעודה וטרם צורף לה נייר. אין לה מול מה להיבדק,
+// ולכן היא לעולם אינה "אומתה" — היא יושבת פתוחה עד שהנייר מגיע. ברגע
+// שיש עוגני נייר היא חוזרת למסלול הרגיל לכל דבר.
+function receiptAwaitingDoc(rc) {
+  if (!rc || !rc.noDoc) return false;
+  return !(Array.isArray(rc.noteParts) ? rc.noteParts : []).filter(Boolean).length;
+}
 function receiptDiscrepancyInfo(rc, opts) {
   opts = opts || {};
+  const awaitingDoc = receiptAwaitingDoc(rc);
   const rawShort = [], rawOver = [];
   (rc.items || []).forEach(l => {
     if (l.noteQty == null) return;
@@ -12353,7 +12469,7 @@ function receiptDiscrepancyInfo(rc, opts) {
   // חוסר) נבלע גם הוא בזיכוי. עודף, פער יחידות וממצאי AI אינם נסגרים בכסף.
   const shortSideOpen = (finalShort.length > 0 || (amountGapOpen && Math.round(unresolvedAmountGap * 100) > 0)) && !shortFullyCredited;
   const overSideOpen = finalOver.length > 0 || (amountGapOpen && Math.round(unresolvedAmountGap * 100) < 0);
-  return { open: !!(shortSideOpen || overSideOpen || unresolvedUnitsGap !== 0 || aiAuditOpen || creditOpen), shortItems: finalShort, overItems: finalOver, priceOffsets, externalOffsets, shortGoodsNotes, shortVal: r2(shortVal), overVal: r2(overVal), shortValRaw, shortCreditEx, shortCreditNotes, shortFullyCredited, unresolvedAmountGap, unresolvedUnitsGap, amountGapOpen, amountToleranceCents, aiAuditOpen };
+  return { open: !!(awaitingDoc || shortSideOpen || overSideOpen || unresolvedUnitsGap !== 0 || aiAuditOpen || creditOpen), awaitingDoc, shortItems: finalShort, overItems: finalOver, priceOffsets, externalOffsets, shortGoodsNotes, shortVal: r2(shortVal), overVal: r2(overVal), shortValRaw, shortCreditEx, shortCreditNotes, shortFullyCredited, unresolvedAmountGap, unresolvedUnitsGap, amountGapOpen, amountToleranceCents, aiAuditOpen };
 }
 // v268: "התקבל זיכוי בסחורה" — הספק השלים את הפריטים החסרים במשלוח מאוחר
 // יותר בלי לחייב שוב. הרישום נשמר לפי מוצר וכמות (shortGoodsNotes) ונצרך
@@ -12975,6 +13091,9 @@ function renderReceiptsHistory() {
     const di = receiptDiscrepancyInfo(rc);
     const payableEx = receiptPayableBaseEx(rc);
     const effectiveOpen = di.open;
+    // v306: תעודה שממתינה לנייר פתוחה — אבל לא בגלל הפרש. אין לה הפרשים
+    // לתקן, יש לה נייר לצרף.
+    const fixOpen = effectiveOpen && !di.awaitingDoc;
     const legacyRecovering = !!(rc.offsetClosed && Number(rc.offsetSchemaVersion || 0) < 2);
     const rows = (rc.items || []).map(l =>
       '<div class="flex items-center justify-between gap-2 py-1 border-b border-slate-100 last:border-0">' +
@@ -12996,7 +13115,12 @@ function renderReceiptsHistory() {
     const hasInternalOffset = !effectiveOpen && !!(di.priceOffsets && di.priceOffsets.length);
     let barCls = 'bg-emerald-500 text-white', borderCls = 'border-emerald-300', statusTxt = '<i class="fa-solid fa-circle-check"></i> אומתה';
     let metaStatus = '';
-    if (effectiveOpen) {
+    if (di.awaitingDoc) {
+      barCls = 'bg-amber-500 text-white';
+      borderCls = 'border-amber-300';
+      statusTxt = '<i class="fa-solid fa-file-circle-xmark"></i> אין תעודה — ממתינה לנייר';
+      metaStatus = ' · <span class="text-amber-700 font-black">נקלטה לפי ספירה</span>';
+    } else if (effectiveOpen) {
       barCls = 'bg-rose-500 text-white';
       borderCls = 'border-rose-300';
       statusTxt = '<i class="fa-solid fa-triangle-exclamation"></i> הפרש פתוח';
@@ -13036,7 +13160,12 @@ function renderReceiptsHistory() {
         '<div class="bg-slate-50 rounded-xl p-3 border border-slate-100">' + rows + '</div>' +
         '<div class="flex items-center justify-end mt-2 text-xs text-slate-500 font-bold px-1"><span>שווי שנסרק: ₪' + fmtMoney(rc.totalExVat) + ' · לתשלום: ₪' + fmtMoney(payableEx) + '</span></div>' +
         (rc.noteTotalInc != null ? '<div class="text-[11px] text-slate-500 font-bold mt-1 px-1"><i class="fa-solid fa-file-invoice"></i> ' + (rc.noteParts && rc.noteParts.length > 1 ? rc.noteParts.length + ' תעודות ספק: ' + rc.noteParts.map(x => '₪' + fmtMoney(normNote(x).amount)).join(' + ') + ' = ₪' + fmtMoney(rc.noteTotalInc) : 'תעודת ספק: ₪' + fmtMoney(rc.noteTotalInc)) + '</div>' : '') +
-        (effectiveOpen ? '<div class="mt-2 bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs">' +
+        (di.awaitingDoc ? '<div class="mt-2 bg-amber-50 border-2 border-amber-300 rounded-xl p-3">' +
+          '<div class="font-black text-amber-900 text-sm mb-1"><i class="fa-solid fa-file-circle-xmark"></i> נקלטה בלי תעודה</div>' +
+          '<div class="text-[11px] font-bold text-amber-800 leading-relaxed mb-2">הסכום כאן מחושב מהמחירון לפי מה שנספר בפועל — אין נייר לאמת מולו, ולכן אי אפשר לתבוע מהספק חוסר או מחיר. כשהתעודה תגיע, הזן את נתוניה כאן והבדיקה הרגילה תרוץ מול הספירה הזאת.</div>' +
+          '<button data-role="rc-attach-doc" data-id="' + rc.id + '" class="btn-tap w-full bg-amber-500 text-white rounded-xl py-2.5 font-black text-sm"><i class="fa-solid fa-file-invoice"></i> התעודה הגיעה — הזן את נתוניה</button>' +
+        '</div>' : '') +
+        (fixOpen ? '<div class="mt-2 bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs">' +
           '<div class="font-black text-rose-700 mb-1"><i class="fa-solid fa-triangle-exclamation"></i> הפרשים מול התעודה</div>' +
           di.shortItems.map(s => receiptDiffRowHtml(rc, s, 'short')).join('') +
           di.overItems.map(s => receiptDiffRowHtml(rc, s, 'over')).join('') +
@@ -13092,7 +13221,7 @@ function renderReceiptsHistory() {
               '<button data-role="rc-offset" data-id="' + rc.id + '" data-other="' + m.other.id + '" data-product="' + m.productId + '" data-other-product="' + (m.otherProductId || m.productId) + '" class="btn-tap w-full bg-indigo-600 text-white rounded-xl py-2 font-black text-sm"><i class="fa-solid fa-check"></i> אשר קיזוז לפריט הזה</button>' +
             '</div>'; })()) +
         docDateEditorHtml('receipt', rc) + // v267
-        (legacyRecovering ? '<button disabled class="mt-2 w-full font-black py-2.5 rounded-xl text-sm bg-slate-100 text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> ממתין לשחזור הקיזוז</button>' : '<button data-role="rc-fix-open" data-id="' + rc.id + '" class="btn-tap mt-2 w-full font-black py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 ' + (effectiveOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700') + '"><i class="fa-solid ' + (effectiveOpen ? 'fa-wrench' : 'fa-pen') + '"></i> ' + (effectiveOpen ? 'תקן הפרשים' : 'ערוך תעודה') + '</button>') +
+        (legacyRecovering ? '<button disabled class="mt-2 w-full font-black py-2.5 rounded-xl text-sm bg-slate-100 text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> ממתין לשחזור הקיזוז</button>' : '<button data-role="rc-fix-open" data-id="' + rc.id + '" class="btn-tap mt-2 w-full font-black py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 ' + (fixOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700') + '"><i class="fa-solid ' + (fixOpen ? 'fa-wrench' : 'fa-pen') + '"></i> ' + (fixOpen ? 'תקן הפרשים' : 'ערוך תעודה') + '</button>') +
         '<button data-role="del-receipt" data-id="' + rc.id + '" class="btn-tap mt-2 w-full bg-red-50 text-red-600 font-bold py-2 rounded-xl text-sm flex items-center justify-center gap-2"><i class="fa-solid fa-trash-can"></i> מחק תעודה</button>' +
       '</div>' +
     '</details>';
@@ -17109,11 +17238,11 @@ app.addEventListener('click', (e) => {
   else if (role === 'clear-history') showConfirm('ניקוי היסטוריה', 'למחוק את כל היסטוריית ההזמנות? יישמר גיבוי בסל מחזור.', 'מחק הכל', () => clearAllDocs('history'));
   else if (role === 'clear-returns-history') showConfirm('ניקוי היסטוריה', 'למחוק את כל היסטוריית החזרות? יישמר גיבוי בסל מחזור.', 'מחק הכל', () => clearAllDocs('returns'));
   else if (role === 'rc-scan') openReceivingScanner();
-  else if (role === 'rc-open') { const en = readNoteEntry(receiptNotes.length === 0); if (en === false) return; if (en) receiptNotes.push(en); recomputeNoteTotal(); receiptOpened = true; receiptDupConfirmed = false; receiptDepositWaived = false; saveReceiptDraft(); refreshReceipt(); openReceivingScanner(); }
+  else if (role === 'rc-open') { const en = readNoteEntry(receiptNotes.length === 0); if (en === false) return; if (en) receiptNotes.push(en); recomputeNoteTotal(); receiptOpened = true; receiptDupConfirmed = false; receiptDepositWaived = false; saveReceiptDraft(); refreshReceipt(); if (!receiptAttachTarget) openReceivingScanner(); }
   // v272: ביטול תעודה חייב למחוק גם את הצילומים ואת קריאת הנייר. כל עוד כל
   // כניסה למסך ההשוואה איפסה אותם ממילא, הדילוג כאן לא הזיק; מרגע שהם שורדים
   // בין המסכים, תעודה שבוטלה הייתה יכולה להוריש את הנייר שלה לתעודה הבאה.
-  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { receiptList = []; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
+  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { receiptList = []; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
   else if (role === 'rc-note-add') {
     // v274: הפעולה עוטפת את עצמה, כדי שאישור ההצהרה על חוסר סך יחידות
     // יוסיף את התעודה במקום להשאיר את העובד מול שדות מלאים שלא נקלטו.
@@ -17124,6 +17253,21 @@ app.addEventListener('click', (e) => {
     };
     addNote();
   }
+  // v306: פתיחת קליטה בלי תעודה. אין עוגנים ואין מה לקרוא — רק סורקים את
+  // מה שהגיע. התעודה תיסגר פתוחה עד שיצורף לה נייר.
+  else if (role === 'rc-open-nodoc') {
+    receiptNotes = []; recomputeNoteTotal();
+    receiptNoDoc = true; receiptAttachTarget = null;
+    receiptOpened = true; editingNotes = false; anchorFixHint = '';
+    receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false;
+    resetAiInvoiceScan(true); aiScanDocuments = [];
+    saveReceiptDraft(); refreshReceipt(); openReceivingScanner();
+  }
+  // v306: הנייר נמצא באמצע הסריקה — פותחים את שדות העוגנים, ומרגע שיש בהם
+  // מספר הקליטה חוזרת להיות רגילה לכל דבר.
+  else if (role === 'rc-nodoc-found') { editingNotes = true; saveReceiptDraft(); refreshReceipt(); }
+  else if (role === 'rc-attach-doc') { reopenReceiptForDoc(id); }
+  else if (role === 'rc-attach-cancel') { cancelReceiptAttach(); }
   else if (role === 'rc-units-unwaive') { receiptUnitsWaived = false; saveReceiptDraft(); refreshReceipt(); }
   else if (role === 'rc-note-remove') { const i = parseInt(t.dataset.idx, 10); if (i >= 0) { receiptNotes.splice(i, 1); recomputeNoteTotal(); saveReceiptDraft(); refreshReceipt(); } }
   else if (role === 'rc-dep-waive') { receiptDepositWaived = true; saveReceiptDraft(); buzz(12); refreshReceipt(); } // v232
