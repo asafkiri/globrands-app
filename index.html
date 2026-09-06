@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v295 סימון תמיד מתחיל בארגז אחד</title>
+    <title>הזמנות יטבתה - v296 מה שסומן אחרון מופיע בראש הרשימה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v295 סימון תמיד מתחיל בארגז אחד</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v296 מה שסומן אחרון מופיע בראש הרשימה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -2545,6 +2545,14 @@ function appOrderDaysAgo(list) {
   const oldest = Math.min.apply(null, list.map(x => Number(x.at) || Date.now()));
   return Math.floor((Date.now() - oldest) / 86400000);
 }
+// v296: חותמת עולה תמיד. שני סימונים באותה מילישנייה קיבלו את אותו at,
+// והמיון "החדש בראש" נשבר בחזרה לסדר א״ב. הסטייה היא מילישניות בודדות
+// ולכן "לפני כמה ימים" נשאר מדויק.
+function nextAppOrderStamp() {
+  let max = 0;
+  (appOrders || []).forEach(x => { const t = Number(x && x.at) || 0; if (t > max) max = t; });
+  return Math.max(Date.now(), max + 1);
+}
 // ===== v292: העתקת ברקוד בלחיצה =====
 // הזרימה בשטח: רואים מוצר חסר, מעתיקים את הברקוד, מדביקים אותו בחיפוש של
 // אפליקציית הספק, מזמינים — וחוזרים לסמן. ה-Clipboard API לא תמיד זמין
@@ -2612,6 +2620,9 @@ function barcodeChipHtml(code) {
 // ===== v291: חיפוש בראש הרשימה — כל מוצר במערכת, לא רק החוסרים =====
 // לא כל מה שמוזמן באפליקציה נמצא ברשימת החוסרים של ההזמנה הפתוחה. החיפוש
 // (לפי שם או ברקוד) מאפשר לסמן כל מוצר, והפאנל מרכז את כל מה שמסומן כרגע.
+// v296: המיון הוא לפי סדר הסימון, החדש בראש. מיון א״ב היה מפזר מוצר שרק
+// עכשיו סומן לאמצע רשימה של עשרות שורות, והמשתמש נאלץ לחפש אותו כדי
+// לוודא שנקלט ולקבוע כמות.
 function appActiveList() {
   const idx = appOrderIndex();
   return Object.keys(idx).map(key => {
@@ -2622,9 +2633,10 @@ function appActiveList() {
       name: (p && p.name) || (list[0] && list[0].name) || key.replace(/^name:/, ''),
       barcode: barcodeForKey(key),
       qty: appOrderQtyOf(list),
-      days: appOrderDaysAgo(list)
+      days: appOrderDaysAgo(list),
+      at: Math.max.apply(null, list.map(x => Number(x.at) || 0))
     };
-  }).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }).sort((a, b) => (b.at - a.at) || a.name.localeCompare(b.name, 'he'));
 }
 function appSearchMatches(q) {
   q = (q || '').trim();
@@ -2694,7 +2706,7 @@ function setAppSearch(el, val) {
 function addAppOrderFromSearch(productId) {
   const p = products.find(x => x.id === productId); if (!p) return;
   if ((appOrderIndex()[p.id] || []).length) return;
-  appOrders = (appOrders || []).concat([{ key: p.id, name: p.name || '', amount: 1, at: Date.now(), fromOrderId: '' }]);
+  appOrders = (appOrders || []).concat([{ key: p.id, name: p.name || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: '' }]);
   appSearch = '';
   saveAppOrders();
   buzz(18);
@@ -2724,7 +2736,7 @@ function toggleAppOrder(key, item, fromOrderId) {
     // v295: תמיד ארגז אחד. קודם הכמות נגזרה מההזמנה המקורית, ואז חלק
     // מהמוצרים יצאו 2 וחלק 1 בלי שום סימן חיצוני למה — התנהגות שנראית
     // אקראית. ברירת מחדל אחת וקבועה, ומי שצריך יותר מוסיף ב-+.
-    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount: 1, at: Date.now(), fromOrderId: fromOrderId || '' }]);
+    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
   }
   saveAppOrders();
   buzz(had ? 8 : 18);
