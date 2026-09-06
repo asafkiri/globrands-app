@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v299 כל קליטת סחורה סוגרת את מחזור הסימונים</title>
+    <title>הזמנות יטבתה - v300 מה שהוזמן בשטראוס ולא הגיע מצטרף לרשימת החוסרים</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v299 כל קליטת סחורה סוגרת את מחזור הסימונים</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v300 מה שהוזמן בשטראוס ולא הגיע מצטרף לרשימת החוסרים</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -2496,22 +2496,51 @@ function orderMissingItems(index) {
 }
 
 // ===== v288: "הוזמן באפליקציה של יטבתה" =====
-// v299: המחזור נסגר באחד משני אירועים בלבד — שידור הזמנה לנהג מהאפליקציה
-// שלנו, או קליטת סחורה. כל קליטת סחורה סוגרת את המחזור כולו, לא רק את
-// המוצרים שמופיעים בתעודה: הנהג מביא בנסיעה אחת גם את הזמנת האפליקציה,
-// ומרגע שהמשלוח התקבל הסימונים סיימו את תפקידם. מוצר שבכל זאת לא הגיע
-// נכנס ממילא לרשימת החוסרים החדשה של ההזמנה, ומשם אפשר לסמן אותו מחדש.
-function appOrderCycleClosed(x) {
+// v300: לסימון שלושה מצבים, וכולם נגזרים מהחותמת מול ההיסטוריה והתעודות —
+// בלי שדות מצב נוספים שאפשר לשכוח לעדכן:
+//   פעיל   — לא שודרה הזמנה לנהג ולא נקלטה סחורה מאז הסימון. אדום בהזמנה.
+//   שודר   — שודרה הזמנה, טרם נקלטה סחורה. כבר לא אדום, אבל עדיין במעקב.
+//   נסגר   — נקלטה סחורה. הגיע: נמחק. לא הגיע: עובר לרשימת החוסרים.
+// המעקב אחרי השידור הוא הלב של העניין: גם מה שהוזמן בשטראוס לפעמים לא
+// מגיע, ובלי לשמור את הסימון עד הקליטה אי אפשר לדעת את זה בכלל.
+function appOrderSentAfter(x) {
+  const at = Number(x && x.at) || 0;
+  return !!at && history.some(o => (Number(o && o.timestamp) || 0) >= at);
+}
+function appOrderReceiptAfter(x) {
+  const at = Number(x && x.at) || 0;
+  return !!at && receipts.some(r => (Number(r && r.timestamp) || 0) >= at);
+}
+function appOrderProductArrived(x) {
   const at = Number(x && x.at) || 0;
   if (!at) return false;
-  return receipts.some(r => (Number(r.timestamp) || 0) >= at);
+  return receipts.some(r => (Number(r.timestamp) || 0) >= at && (r.items || []).some(l => {
+    if (l.isDeposit || !((Number(l.qty) || 0) > 0)) return false;
+    if (orderItemKey(l) === x.key) return true;
+    const nm = String(l.name || '').trim();
+    return !!nm && ('name:' + nm) === x.key;
+  }));
+}
+function appOrderActive(x) { return !appOrderSentAfter(x) && !appOrderReceiptAfter(x); }
+function appOrderNotArrived(x) { return appOrderReceiptAfter(x) && !appOrderProductArrived(x); }
+// מה שהוזמן באפליקציה ולא הגיע במשלוח — מוצג עם החוסרים של הנהג, כדי
+// שבבניית ההזמנה הבאה בשטראוס הכל יהיה ברשימה אחת
+function appNotArrivedList() {
+  const seen = {}, out = [];
+  (appOrders || []).forEach(x => {
+    if (!x || !x.key || seen[x.key] || !appOrderNotArrived(x)) return;
+    seen[x.key] = 1;
+    const p = x.key.indexOf('name:') === 0 ? null : products.find(y => y.id === x.key);
+    out.push({ key: x.key, name: (p && p.name) || x.name || x.key.replace(/^name:/, ''), barcode: barcodeForKey(x.key), at: Number(x.at) || 0 });
+  });
+  return out.sort((a, b) => b.at - a.at);
 }
 function appOrderIndex() {
   if (appOrderCache) return appOrderCache;
   const map = {};
   (appOrders || []).forEach(x => {
     if (!x || !x.key || !((Number(x.amount) || 0) > 0)) return;
-    if (appOrderCycleClosed(x)) return;
+    if (!appOrderActive(x)) return;
     (map[x.key] = map[x.key] || []).push(x);
   });
   appOrderCache = map;
@@ -2724,18 +2753,47 @@ function refreshAppRows(key) {
   }
 }
 function toggleAppOrder(key, item, fromOrderId) {
-  const had = (appOrders || []).some(x => x && x.key === key && !appOrderCycleClosed(x));
-  if (had) appOrders = appOrders.filter(x => !(x && x.key === key));
-  else {
+  const had = (appOrders || []).some(x => x && x.key === key && appOrderActive(x));
+  // v300: סימון מחדש מחליף רשומה ישנה של אותו מוצר — למשל כזאת שסומנה
+  // "לא הגיע" — כדי שלא יישארו שתי רשומות לאותו מוצר
+  appOrders = (appOrders || []).filter(x => !(x && x.key === key));
+  if (!had) {
     // v295: תמיד ארגז אחד. קודם הכמות נגזרה מההזמנה המקורית, ואז חלק
     // מהמוצרים יצאו 2 וחלק 1 בלי שום סימן חיצוני למה — התנהגות שנראית
     // אקראית. ברירת מחדל אחת וקבועה, ומי שצריך יותר מוסיף ב-+.
-    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
+    appOrders = appOrders.concat([{ key, name: (item && item.name) || '', amount: 1, at: nextAppOrderStamp(), fromOrderId: fromOrderId || '' }]);
   }
   saveAppOrders();
   buzz(had ? 8 : 18);
   refreshAppRows(key);
   refreshAppPanels();
+  refreshAppNotArrived();
+}
+// הסרה ידנית של מוצר שלא הגיע מרשימת החוסרים
+function dropAppOrder(key) {
+  appOrders = (appOrders || []).filter(x => !(x && x.key === key));
+  saveAppOrders();
+  buzz(8);
+  refreshAppNotArrived();
+  refreshAppPanels();
+}
+// עדכון נקודתי של שורות "הוזמן באפליקציה ולא הגיע" — בלי לבנות מחדש את
+// המסך ולסגור את הכרטיסים הפתוחים (v290)
+function refreshAppNotArrived() {
+  const boxes = document.querySelectorAll('#app [data-appmiss]');
+  if (!boxes.length) return;
+  const html = appNotArrivedList().map(appNotArrivedRowHtml).join('');
+  for (let i = 0; i < boxes.length; i++) boxes[i].innerHTML = html;
+}
+function appNotArrivedRowHtml(m) {
+  return '<div class="flex items-start gap-2">' +
+    '<button data-role="app-mark" data-id="' + htmlEscape(m.key) + '" class="btn-tap shrink-0 w-6 h-6 rounded-md bg-white border-2 border-rose-300 text-transparent flex items-center justify-center"><i class="fa-solid fa-check text-[11px]"></i></button>' +
+    '<span class="min-w-0 flex-1"><span class="block text-sm font-bold text-rose-800 truncate">' + htmlEscape(m.name) + '</span>' +
+      barcodeChipHtml(m.barcode) +
+      '<span class="block text-[10px] font-black text-rose-500 mt-0.5"><i class="fa-solid fa-mobile-screen"></i> הוזמן באפליקציה ולא הגיע — הזמן שוב</span>' +
+    '</span>' +
+    '<button data-role="app-drop" data-id="' + htmlEscape(m.key) + '" class="btn-tap shrink-0 text-slate-400 px-1.5 py-1" title="הסר מהרשימה"><i class="fa-solid fa-xmark"></i></button>' +
+  '</div>';
 }
 function stepAppOrder(key, delta) {
   const list = appOrdersFor(key); if (!list.length) return;
@@ -2751,7 +2809,9 @@ function stepAppOrder(key, delta) {
 // v299: קליטת סחורה סוגרת את המחזור — כל הסימונים שקדמו לה יורדים מהרשימה
 function appOrdersSweep() {
   if (!(appOrders || []).length) return;
-  const keep = appOrders.filter(x => x && x.key && (Number(x.amount) || 0) > 0 && !appOrderCycleClosed(x));
+  // סימון שהמוצר שלו הגיע סיים את תפקידו. סימון שלא הגיע נשאר — הוא זה
+  // שמופיע ברשימת החוסרים, ובלעדיו ההזמנה משטראוס שלא הגיעה נעלמת.
+  const keep = appOrders.filter(x => x && x.key && (Number(x.amount) || 0) > 0 && !appOrderProductArrived(x));
   if (keep.length === appOrders.length) return;
   appOrders = keep;
   saveAppOrders();
@@ -2816,10 +2876,15 @@ function renderHistory() {
         : (missing.length
           ? '<div class="bg-rose-100 text-rose-700 font-black px-2.5 py-1 rounded-full text-xs shrink-0">' + missing.length + ' לא ' + (missing.length === 1 ? 'הגיע' : 'הגיעו') + '</div>'
           : '<div class="bg-green-100 text-green-700 font-black px-2.5 py-1 rounded-full text-xs shrink-0"><i class="fa-solid fa-check"></i> הכל הגיע</div>');
-      const missingBlock = (missing && missing.length)
+      // v300: בכרטיס האחרון מצטרפים לרשימה גם מוצרים שהוזמנו באפליקציה של
+      // שטראוס ולא הגיעו במשלוח. הם לא היו בהזמנה לנהג ולכן אינם נגזרים
+      // מההשוואה מולה — בלי זה הם היו נעלמים לגמרי מהמסך.
+      const appMiss = idx === 0 ? appNotArrivedList() : [];
+      const missingBlock = ((missing && missing.length) || appMiss.length)
         ? '<div class="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3">' +
             '<div class="text-xs font-black text-rose-700 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> הוזמן ולא הגיע</div>' +
-            '<div class="space-y-1.5">' + missing.map(it => appMissingRowHtml(it, o.id)).join('') + '</div>' +
+            '<div class="space-y-1.5">' + ((missing || []).map(it => appMissingRowHtml(it, o.id)).join('')) + '</div>' +
+            (idx === 0 ? '<div data-appmiss="1" class="space-y-1.5' + ((missing && missing.length) ? ' mt-1.5 pt-1.5 border-t border-rose-200' : '') + '">' + appMiss.map(appNotArrivedRowHtml).join('') + '</div>' : '') +
             '<div class="text-[10px] font-bold text-rose-500 mt-2">לפי תעודות הקליטה שנקלטו אחרי ההזמנה. כמות חלקית נחשבת "הגיע".</div>' +
             '<div class="text-[10px] font-bold text-slate-500 mt-1"><i class="fa-solid fa-mobile-screen"></i> סימון "הוזמן באפליקציה" (בארגזים) יצבע את המוצר באדום בהזמנה לנהג, עד שמשדרים לנהג או שנקלטת סחורה.</div>' +
           '</div>'
@@ -3896,12 +3961,12 @@ function renderSendModal(items, titleNote, type) {
         '<div class="text-[10px] font-bold text-rose-500 mt-1.5">הכמות נשלחת כמו שהיא — ודא שזאת תוספת מכוונת ולא כפילות</div>' +
       '</div>'
     : '';
-  // v297: הנהג מביא בנסיעה אחת גם את מה שהוזמן באפליקציה של יטבתה וגם את
-  // ההזמנה הזאת — ולכן הסימונים מסיימים את תפקידם ברגע השליחה ונמחקים.
+  // v300: אחרי השליחה הסימון מפסיק להיות אדום, אבל נשאר במעקב עד הקליטה —
+  // מה שלא יגיע במשלוח יופיע ברשימת החוסרים
   const marksCount = isNewOrder ? appActiveList().length : 0;
   const marksHtml = marksCount
     ? '<div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-3 text-[11px] font-bold text-slate-500">' +
-        '<i class="fa-solid fa-mobile-screen text-blue-600"></i> ' + marksCount + ' מוצרים מסומנים "הוזמן באפליקציה" — הסימון יימחק אחרי השליחה, כי הנהג מביא הכל יחד' +
+        '<i class="fa-solid fa-mobile-screen text-blue-600"></i> ' + marksCount + ' מוצרים מסומנים "הוזמן באפליקציה" — אחרי השליחה הם יפסיקו להיות אדומים. מה שלא יגיע במשלוח יופיע ברשימת החוסרים' +
       '</div>'
     : '';
   const gapNote = supplierGapWhatsappNote();
@@ -3991,14 +4056,10 @@ async function performSend(contact) {
     orderState = {};
     products.forEach(p => orderState[p.id] = { amount: '', unit: normalizeOrderUnit(p.defaultUnit) });
     try { localStorage.removeItem(ORDER_DRAFT_KEY); } catch (e) {}
-    // v297: הנהג מביא בנסיעה אחת את מה שהוזמן באפליקציה של יטבתה ואת ההזמנה
-    // הזאת — מרגע השידור הסימונים סיימו את תפקידם. הכתיבה לענן מיידית, כמו
-    // בטיוטת החזרות (v240): הטיימר המושהה לא שורד את המעבר לוואטסאפ.
-    if ((appOrders || []).length) {
-      appOrders = [];
-      saveAppOrders();
-      await flushAppOrdersToCloudNow();
-    }
+    // v300: השידור מפסיק את הסימון האדום (נגזר מההיסטוריה, בלי מחיקה),
+    // אבל הסימונים עצמם נשמרים עד קליטת הסחורה — רק אז יודעים אם ההזמנה
+    // משטראוס הגיעה, ומה שלא הגיע עובר לרשימת החוסרים.
+    appOrderCache = null;
   }
   sendCtx = null;
   hideSend();
@@ -16899,6 +16960,7 @@ app.addEventListener('click', (e) => {
   else if (role === 'app-minus') stepAppOrder(id, -1);
   else if (role === 'app-plus') stepAppOrder(id, 1);
   else if (role === 'app-add') addAppOrderFromSearch(id); // v291: הוספה מהחיפוש
+  else if (role === 'app-drop') dropAppOrder(id);         // v300: הסרה מרשימת "לא הגיע"
   else if (role === 'copy-barcode') copyBarcode(t.dataset.code); // v292
   else if (role === 'ret-add') addReturn(id);
   else if (role === 'ret-scan') openReturnsScanner();
