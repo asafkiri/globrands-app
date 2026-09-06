@@ -6,11 +6,11 @@ function grab(a, b) {
   const j = src.indexOf(b, i); if (j < 0) throw new Error('לא נמצא סוף: ' + b);
   return src.slice(i, j);
 }
-const lines = src.split("\n");
-const slice = (a, b) => lines.slice(a - 1, b - 1).join("\n");
+// שליפה לפי סימנים בקוד ולא לפי מספרי שורות — עריכה במקום אחר בקובץ
+// הזיזה את המספרים והבדיקה נשברה בלי שהלוגיקה השתנתה
 const code =
-  slice(692, 716) +                                    // normalizeBarcode … findProductBySku
-  "\n" + grab("let promoSkuPending = [];", "async function flushPromoSkus");
+  grab('function normalizeBarcode(value)', 'function duplicateBarcodeMessage') +
+  '\n' + grab('let promoSkuPending = [];', 'async function flushPromoSkus');
 
 const build = new Function('P', code + `
   return { collect: collectSkuFromSheet, pending: () => promoSkuPending, reset: () => { promoSkuPending = []; } };

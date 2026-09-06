@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v318 מסך הוזמן באפליקציה</title>
+    <title>הזמנות יטבתה - v318 כפתור הוזמן באפליקציה בכותרת</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -71,14 +71,22 @@
            עכשיו: שתי מטרות = שני כפתורים רחבים עם תוויות, גלויים בכל המסכים.
            היסטוריית החזרות לא אבדה — יש לה כפתור משלה בראש מסך החזרות. -->
       <div id="navHistory" class="max-w-3xl mx-auto px-4 pb-1.5">
-        <div class="flex gap-2">
-          <button id="btnOrdersHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
-            <i class="fa-solid fa-clock-rotate-left text-sm shrink-0"></i>
-            <span class="font-black text-[13px] truncate">היסטוריית הזמנות</span>
+        <!-- v318: שלושה כפתורים בשורה אחת. התוויות התקצרו כי בשליש רוחב
+             מסך טלפון "היסטוריית הזמנות" נחתך באמצע ממילא — האייקון נושא
+             את המשמעות, והתווית המלאה נשארת ב-title ו-aria-label. -->
+        <div class="flex gap-1.5">
+          <button id="btnAppOrders" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1 px-1" title="הוזמן באפליקציה של יטבתה" aria-label="הוזמן באפליקציה של יטבתה">
+            <i class="fa-solid fa-mobile-screen text-sm shrink-0"></i>
+            <span class="font-black text-[12.5px] truncate">באפליקציה</span>
+            <span id="appOrdersBadge" class="hidden shrink-0 text-[10px] font-black bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5"></span>
           </button>
-          <button id="btnReceiptsHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1.5 px-1.5" title="תעודות קליטה" aria-label="תעודות קליטה">
+          <button id="btnOrdersHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1 px-1" title="היסטוריית הזמנות" aria-label="היסטוריית הזמנות">
+            <i class="fa-solid fa-clock-rotate-left text-sm shrink-0"></i>
+            <span class="font-black text-[12.5px] truncate">הזמנות</span>
+          </button>
+          <button id="btnReceiptsHistory" class="btn-tap flex-1 min-w-0 h-10 rounded-xl bg-white text-blue-700 shadow-lg ring-1 ring-blue-900/10 flex items-center justify-center gap-1 px-1" title="תעודות קליטה" aria-label="תעודות קליטה">
             <i class="fa-solid fa-file-invoice text-sm shrink-0"></i>
-            <span class="font-black text-[13px] truncate">תעודות קליטה</span>
+            <span class="font-black text-[12.5px] truncate">תעודות</span>
           </button>
         </div>
       </div>
@@ -869,6 +877,7 @@ function restoreReturnsDraft() { try { const s = localStorage.getItem(RETURNS_DR
 function saveAppOrders() {
   appOrdersLocalTs = Date.now();
   appOrderCache = null;
+  updateAppOrdersBadge();   // v318: המונה בכותרת מתעדכן בכל שינוי, מכל מסך
   try { localStorage.setItem(APP_ORDERS_KEY, JSON.stringify(appOrders)); localStorage.setItem(APP_ORDERS_TS_KEY, String(appOrdersLocalTs)); } catch (e) {}
   if (!db) return;
   clearTimeout(appOrdersTimer);
@@ -1318,11 +1327,25 @@ function updateModeTabs() {
 // v313: הכפתור של המסך שאנחנו נמצאים בו נצבע כהה — כדי שיהיה ברור
 // שזה המסך הפתוח, ולא כפתור שממתין ללחיצה.
 function updateNavHistory() {
-  const o = $('btnOrdersHistory'), r = $('btnReceiptsHistory'); if (!o || !r) return;
-  const base = 'btn-tap flex-1 min-w-0 h-10 rounded-xl shadow-lg ring-1 flex items-center justify-center gap-1.5 px-1.5 ';
+  const a = $('btnAppOrders'), o = $('btnOrdersHistory'), r = $('btnReceiptsHistory');
+  if (!o || !r || !a) return;
+  const base = 'btn-tap flex-1 min-w-0 h-10 rounded-xl shadow-lg ring-1 flex items-center justify-center gap-1 px-1 ';
   const act = 'bg-blue-800 text-white ring-white/40', off = 'bg-white text-blue-700 ring-blue-900/10';
+  a.className = base + (currentView === 'appOrders' ? act : off);
   o.className = base + (currentView === 'history' ? act : off);
   r.className = base + (currentView === 'receiptsHistory' ? act : off);
+  updateAppOrdersBadge();
+}
+// v318: המונה על הכפתור הוא הסיבה שהוא יושב בכותרת ולא נקבר במסך —
+// כמה מוצרים מסומנים כרגע ויורדים מההזמנה לנהג, גלוי מכל מסך ובכל רגע.
+function updateAppOrdersBadge() {
+  const b = $('appOrdersBadge'); if (!b) return;
+  const n = appActiveList().length;
+  b.textContent = n;
+  b.classList.toggle('hidden', !n);
+  // בכפתור הפעיל הרקע כהה — תג בהיר עליו לא נקרא
+  b.className = (n ? '' : 'hidden ') + 'shrink-0 text-[10px] font-black rounded-full px-1.5 py-0.5 ' +
+    (currentView === 'appOrders' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700');
 }
 function renderView() {
   const isOrder = currentView === 'order';
@@ -1431,7 +1454,7 @@ function renderOrder() {
   }
   const rows = buildOrderRowsGrouped(visible);
   app.innerHTML =
-    supplierGapBannerHtml() + pendingReturnsBannerHtml() + appOrdersEntryHtml() +
+    supplierGapBannerHtml() + pendingReturnsBannerHtml() +
     '<div class="flex items-center justify-between gap-2 mb-3 px-1">' +
       '<div class="text-[11px] text-slate-400 font-medium leading-tight">טפו על <b class="text-blue-500">מומלץ</b> כדי להזמין את הכמות, או הקלידו כמות אחרת · לחיצה ארוכה על מוצר פותחת עריכה</div>' +
       '<button data-role="clear-order" class="btn-tap shrink-0 text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">נקה</button>' +
@@ -3258,25 +3281,6 @@ function renderAppOrders() {
     appPastChipsHtml() +
     missingBlock;
 }
-function appOrdersEntryHtml() {
-  // הכניסה יושבת דווקא במסך ההזמנה, ולא כטאב נפרד: הסימון משפיע ישירות
-  // על ההזמנה לנהג, והמונה צריך להיות מול העיניים לפני שמשדרים.
-  const n = appActiveList().length;
-  const miss = appNotArrivedList().length;
-  return '<button data-role="go-app-orders" class="btn-tap w-full bg-white border border-slate-200 rounded-2xl shadow-sm p-3 mb-3 flex items-center gap-3 text-right">' +
-    '<span class="bg-blue-50 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center shrink-0"><i class="fa-solid fa-mobile-screen text-lg"></i></span>' +
-    '<span class="flex-1 min-w-0">' +
-      '<span class="block font-black text-slate-800 leading-tight">הוזמן באפליקציה של יטבתה</span>' +
-      '<span class="block text-[11px] font-bold text-slate-400 mt-0.5">' +
-        (n ? (n + ' מסומנים · יורדים מההזמנה לנהג') : 'לסימון מה שהזמנתם ישירות אצל הספק') +
-        (miss ? ' · ' + miss + ' לא הגיעו' : '') +
-      '</span>' +
-    '</span>' +
-    (n ? '<span class="shrink-0 text-[12px] font-black bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">' + n + '</span>' : '') +
-    '<i class="fa-solid fa-chevron-left text-slate-300 shrink-0"></i>' +
-  '</button>';
-}
-
 // ===== הערות ותזכורות =====
 function updateNotesBadge() {
   const b = $('notesBadge'); if (!b) return;
@@ -16359,6 +16363,7 @@ $('shortCreditModal').addEventListener('click', (e) => { if (e.target === $('sho
 $('confirmOk').addEventListener('click', () => { const cb = confirmCb; hideConfirm(); if (cb) cb(); });
 $('brandHome').addEventListener('click', () => setView('order'));
 // v313: כל כפתור מוביל תמיד לאותו מסך, בלי תלות במצב הנוכחי
+$('btnAppOrders').addEventListener('click', () => setView('appOrders')); // v318
 $('btnOrdersHistory').addEventListener('click', () => setView('history'));
 $('btnReceiptsHistory').addEventListener('click', () => setView('receiptsHistory'));
 $('segOrder').addEventListener('click', () => setView('order'));
