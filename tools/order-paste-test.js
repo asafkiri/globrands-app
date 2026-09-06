@@ -18,10 +18,12 @@ const code =
   grab('function normalizeSku(value)', 'function duplicateBarcodeMessage') +
   '\n' + grab('const PASTE_SKU_RE', 'let orderPaste = null;');
 
-function build(products) {
+// marks: { productId: כמות מסומנת פעילה }
+function build(products, marks) {
+  const m = marks || {};
   const f = new Function('products', 'appOrdersFor', 'appOrderQtyOf',
-    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine };');
-  return f(products || [], () => [], () => 0);
+    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine, willWrite: orderPasteWillWrite };');
+  return f(products || [], k => (m[k] ? [{ amount: m[k] }] : []), list => (list || []).reduce((a, x) => a + (Number(x.amount) || 0), 0));
 }
 
 let pass = 0, fail = 0;
@@ -104,6 +106,32 @@ check('מה שלא זוהה מגיע עם מק"ט ושם', [r.miss[0].sku, r.mis
 check('טקסט ריק מחזיר כלום', api2.analyze('').items.length, 0);
 check('טקסט לא רלוונטי מחזיר כלום', api2.analyze('שלום\nמה נשמע\n123').items.length, 0);
 
+// ===== הדבקה חוזרת של הזמנה שכבר מסומנת =====
+const paste2 = block('שוקו פקק 250 מ"ל', '341470', 12, 1) + '\n' +
+               block("קוטג' 5% 250 גרם", '216962', 12, 2);
+
+// --- הכל כבר מסומן באותן כמויות: שום דבר לא ייכתב
+let a = build(P, { p1: 1, p2: 2 }).analyze(paste2);
+check('הכל מסומן — כל השורות מסומנות same', a.hit.map(h => h.status), ['same', 'same']);
+check('הכל מסומן — אין מה לכתוב', build(P, { p1: 1, p2: 2 }).willWrite(a.hit).length, 0);
+
+// --- כמות שונה: רק היא נכתבת
+a = build(P, { p1: 1, p2: 5 }).analyze(paste2);
+check('כמות שונה מזוהה כעדכון', a.hit.map(h => h.status), ['same', 'changed']);
+check('רק המשתנה נכתב', build(P, {}).willWrite(a.hit).map(h => h.id), ['p2']);
+check('הכמות מההדבקה גוברת על הקיימת', a.hit[1].qty, 2);
+check('הכמות הקודמת נשמרת לתצוגה', a.hit[1].was, 5);
+
+// --- לא מסומן כלל: חדש
+a = build(P, {}).analyze(paste2);
+check('ללא סימון קיים — הכל חדש', a.hit.map(h => h.status), ['new', 'new']);
+
+// --- מסומן אבל לא פעיל (שודר לנהג / לא הגיע) נחשב חדש, כי appOrdersFor
+//     מחזיר רק סימונים פעילים — וזו בדיוק הזמנה חוזרת
+a = build(P, { p1: 0 }).analyze(paste2);
+check('סימון לא פעיל נחשב חדש', a.hit[0].status, 'new');
+
+
 // ===== מול דפי ההזמנה האמיתיים, אם יש =====
 const dir = process.argv[2] || process.env.SAMPLES;
 if (dir && fs.existsSync(dir)) {
@@ -129,6 +157,20 @@ if (dir && fs.existsSync(dir)) {
       // מסך הקטלוג חייב להישאר ריק גם על הקובץ האמיתי
       const cat = path.join(dir, 'catalog.txt');
       if (fs.existsSync(cat)) check('הקטלוג האמיתי אינו נקלט כהזמנה', live.analyze(fs.readFileSync(cat, 'utf8')).items.length, 0);
+
+      // --- הדבקה חוזרת על המצב האמיתי שבאפליקציה: מה שכבר מסומן לא נכתב
+      const pasteFile = path.join(dir, 'order-paste.txt');
+      const draft = ((backup.collections.drafts || {}).appOrders || {}).items || [];
+      if (fs.existsSync(pasteFile) && draft.length) {
+        const marks = {};
+        draft.forEach(m => { if (m && m.key && (Number(m.amount) || 0) > 0) marks[m.key] = (marks[m.key] || 0) + Number(m.amount); });
+        const withMarks = build(prods, marks);
+        const re = withMarks.analyze(fs.readFileSync(pasteFile, 'utf8'));
+        const willWrite = withMarks.willWrite(re.hit);
+        console.log('   הדבקה חוזרת על ' + draft.length + ' סימונים קיימים · ' +
+          're.hit=' + re.hit.length + ' · ייכתבו: ' + willWrite.length);
+        check('הדבקה חוזרת של הזמנה שכבר מסומנת אינה כותבת כלום', willWrite.length, 0);
+      }
     }
   }
 } else {

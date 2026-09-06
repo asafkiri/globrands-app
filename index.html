@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v321 הדבקת הזמנה שלמה משטראוס</title>
+    <title>הזמנות יטבתה - v322 הדבקה חוזרת לא נוגעת במה שכבר מסומן</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v321 הדבקת הזמנה שלמה משטראוס</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v322 הדבקה חוזרת לא נוגעת במה שכבר מסומן</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3346,22 +3346,30 @@ function parseSupplierOrder(txt) {
   });
   return merged;
 }
-// ההצלבה מול המאגר. was = הכמות שכבר מסומנת עכשיו, כדי שהתצוגה תראה
-// "היה 1 ← 2" ולא תיראה כאילו כלום לא קרה
+// ההצלבה מול המאגר. was = הכמות שכבר מסומנת עכשיו (רק סימון פעיל נחשב,
+// כי appOrdersFor מסתמך על appOrderIndex), וממנה נגזר מה ההדבקה באמת
+// תעשה לכל שורה:
+//   same    — כבר מסומן בדיוק באותה כמות. לא נוגעים בו בכלל.
+//   changed — מסומן בכמות אחרת. ההדבקה קובעת, כי היא ההזמנה עצמה.
+//   new     — לא מסומן פעיל: או שלא סומן מעולם, או שהוא כבר שודר לנהג,
+//             או שהוא ברשימת "הוזמן ולא הגיע" — ואז זו הזמנה חוזרת.
 function analyzeOrderPaste(txt) {
   const items = parseSupplierOrder(txt);
   const hit = [], miss = [];
   items.forEach(it => {
     const p = findProductBySku(it.sku, null);
     if (!p) { miss.push(it); return; }
+    const was = appOrderQtyOf(appOrdersFor(p.id));
     hit.push({
       sku: it.sku, qty: it.qty, id: p.id, name: p.name || '',
-      supplierName: it.name, hidden: !!p.hidden,
-      was: appOrderQtyOf(appOrdersFor(p.id))
+      supplierName: it.name, hidden: !!p.hidden, was: was,
+      status: was === it.qty ? 'same' : (was > 0 ? 'changed' : 'new')
     });
   });
   return { items: items, hit: hit, miss: miss };
 }
+// מה שההדבקה תשנה בפועל — זה מה שנספר בכפתור ומה שנכתב
+function orderPasteWillWrite(hit) { return (hit || []).filter(h => h.status !== 'same'); }
 
 let orderPaste = null;   // { step: 'input' | 'preview', text, hit, miss, attach, attachQ }
 
@@ -3387,16 +3395,20 @@ function analyzeOrderPasteFromBox() {
   renderAppOrders();
 }
 function applyOrderPaste() {
-  const hit = (orderPaste && orderPaste.hit) || [];
-  if (!hit.length) return;
-  hit.forEach(h => writeAppOrder(h.id, h.name, '', h.qty));
+  // מוצר שכבר מסומן בדיוק באותה כמות אינו נכתב מחדש. כתיבה מחדש הייתה
+  // מחליפה לו את חותמת הזמן, והוא היה קופץ לראש הרשימה בלי סיבה —
+  // ובמצב שבו כל ההזמנה כבר מסומנת, כל הרשימה הייתה מתערבבת לחינם.
+  const write = orderPasteWillWrite(orderPaste && orderPaste.hit);
+  if (!write.length) { closeOrderPaste(); showToast('הכל כבר מסומן — לא היה מה לעדכן', null, null, 2600); return; }
+  write.forEach(h => writeAppOrder(h.id, h.name, '', h.qty));
   saveAppOrders();
   buzz(18);
-  const boxes = hit.reduce((a, h) => a + h.qty, 0);
-  logAction('app', 'הדבקת הזמנה מאפליקציית הספק', 'סומנו ' + hit.length + ' מוצרים · ' + boxes + ' ארגזים', { count: hit.length, boxes: boxes });
+  const boxes = write.reduce((a, h) => a + h.qty, 0);
+  const upd = write.filter(h => h.status === 'changed').length;
+  logAction('app', 'הדבקת הזמנה מאפליקציית הספק', 'סומנו ' + write.length + ' מוצרים · ' + boxes + ' ארגזים' + (upd ? ' (מתוכם ' + upd + ' עדכוני כמות)' : ''), { count: write.length, boxes: boxes, updated: upd });
   orderPaste = null;
   renderAppOrders();
-  showToast('סומנו ' + hit.length + ' מוצרים · ' + boxes + ' ארגזים', null, null, 2800);
+  showToast('סומנו ' + write.length + ' מוצרים · ' + boxes + ' ארגזים', null, null, 2800);
 }
 // שיוך מק"ט שלא זוהה למוצר קיים. זה מה שסוגר את המעגל: כל הדבקה משפרת
 // את הבאה אחריה, במקום להשאיר את אותם מוצרים חסרים לנצח.
@@ -3477,18 +3489,26 @@ function orderPasteHtml() {
 
   // --- מסך התצוגה המקדימה: שום דבר לא נכתב עד שלוחצים "סמן הכל"
   const hit = orderPaste.hit || [], miss = orderPaste.miss || [];
-  const boxes = hit.reduce((a, h) => a + h.qty, 0);
+  const write = orderPasteWillWrite(hit);
+  const nNew = hit.filter(h => h.status === 'new').length;
+  const nChanged = hit.filter(h => h.status === 'changed').length;
+  const nSame = hit.filter(h => h.status === 'same').length;
+  const boxes = write.reduce((a, h) => a + h.qty, 0);
 
   const hitRows = hit.map(h => {
-    const changed = h.was > 0 && h.was !== h.qty;
-    return '<div class="flex items-start gap-2 py-1.5 border-b border-emerald-100 last:border-0">' +
-      '<i class="fa-solid fa-check text-emerald-500 text-[11px] mt-1 shrink-0"></i>' +
+    const same = h.status === 'same', changed = h.status === 'changed';
+    const tag = same
+      ? '<span class="inline-block text-[9px] font-black text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 mt-0.5">כבר מסומן · ללא שינוי</span>'
+      : (changed ? '<span class="inline-block text-[9px] font-black text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5">עדכון כמות</span>' : '');
+    return '<div class="flex items-start gap-2 py-1.5 border-b border-emerald-100 last:border-0' + (same ? ' opacity-50' : '') + '">' +
+      '<i class="fa-solid ' + (same ? 'fa-equals text-slate-300' : 'fa-check text-emerald-500') + ' text-[11px] mt-1 shrink-0"></i>' +
       '<span class="min-w-0 flex-1">' +
         '<span class="block text-sm font-bold text-slate-800 truncate">' + htmlEscape(h.name) + '</span>' +
         '<span class="block text-[10px] font-bold text-slate-400 truncate">' + htmlEscape(h.supplierName || '') + ' · מק״ט ' + htmlEscape(h.sku) + '</span>' +
-        (h.hidden ? '<span class="inline-block text-[9px] font-black text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5">מוסתר אצלנו</span>' : '') +
+        tag +
+        (h.hidden ? '<span class="inline-block text-[9px] font-black text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5 mr-1">מוסתר אצלנו</span>' : '') +
       '</span>' +
-      '<span class="shrink-0 text-[11px] font-black whitespace-nowrap mt-0.5 ' + (changed ? 'text-amber-600' : 'text-emerald-700') + '">' +
+      '<span class="shrink-0 text-[11px] font-black whitespace-nowrap mt-0.5 ' + (changed ? 'text-amber-600' : (same ? 'text-slate-400' : 'text-emerald-700')) + '">' +
         (changed ? h.was + ' ← ' : '') + h.qty + ' ' + (h.qty === 1 ? 'ארגז' : 'ארגזים') +
       '</span>' +
     '</div>';
@@ -3515,9 +3535,17 @@ function orderPasteHtml() {
         : '') +
     '</div>').join('');
 
+  // הכותרת אומרת מה יקרה, לא כמה שורות נקראו: הדבקה של הזמנה שכבר
+  // מסומנת במלואה היא מצב לגיטימי ותכוף, והמסך חייב לומר את זה במפורש
+  // במקום להציג "סמן 28 מוצרים" שלא ישנה כלום
+  const summary = write.length
+    ? 'ישתנו <b class="text-emerald-700">' + write.length + '</b> מוצרים · ' + boxes + ' ארגזים' +
+      (nChanged ? ' · <b class="text-amber-600">' + nChanged + '</b> עדכוני כמות' : '') +
+      (nSame ? ' · ' + nSame + ' כבר מסומנים' : '')
+    : '<b class="text-slate-600">כל ' + hit.length + ' המוצרים כבר מסומנים באותן כמויות</b> — אין מה לעדכן';
+
   return '<div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">' + head +
-    '<div class="text-[11px] font-bold text-slate-500 mb-2">' +
-      'זוהו <b class="text-emerald-700">' + hit.length + '</b> מוצרים · ' + boxes + ' ארגזים' +
+    '<div class="text-[11px] font-bold text-slate-500 mb-2">' + summary +
       (miss.length ? ' · <b class="text-amber-600">' + miss.length + '</b> לא זוהו' : '') +
     '</div>' +
     (hit.length
@@ -3530,9 +3558,12 @@ function orderPasteHtml() {
         '</div>'
       : '') +
     '<div class="flex gap-2">' +
-      '<button data-role="paste-close" class="btn-tap flex-1 py-2.5 rounded-xl font-black bg-slate-100 text-slate-500">ביטול</button>' +
-      (hit.length
-        ? '<button data-role="paste-apply" class="btn-tap flex-[2] py-2.5 rounded-xl font-black text-white bg-emerald-600"><i class="fa-solid fa-check"></i> סמן ' + hit.length + ' מוצרים</button>'
+      '<button data-role="paste-close" class="btn-tap flex-1 py-2.5 rounded-xl font-black bg-slate-100 text-slate-500">' + (write.length ? 'ביטול' : 'סגור') + '</button>' +
+      (write.length
+        ? '<button data-role="paste-apply" class="btn-tap flex-[2] py-2.5 rounded-xl font-black text-white bg-emerald-600"><i class="fa-solid fa-check"></i> ' +
+            (nNew && nChanged ? 'סמן ' + nNew + ' ועדכן ' + nChanged
+              : (nChanged ? 'עדכן ' + nChanged + ' מוצרים' : 'סמן ' + nNew + ' מוצרים')) +
+          '</button>'
         : '') +
     '</div>' +
   '</div>';
