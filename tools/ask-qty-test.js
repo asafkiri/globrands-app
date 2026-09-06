@@ -11,7 +11,8 @@ const grab = (a, b) => {
 };
 
 const code =
-  grab('function askOrderTexts(title, yes, no)', '// ===== v292: העתקת ברקוד בלחיצה') +
+  grab('function maybeAskAppOrder()', '// ===== v320: שאלת הכמות בסימון ידני') +
+  '\n' + grab('function askOrderTexts(title, yes, no)', '// ===== v292: העתקת ברקוד בלחיצה') +
   '\n' + grab('function toggleAppOrder(key, item, fromOrderId)', '// הסרה ידנית של מוצר שלא הגיע') +
   '\n' + grab('function addAppOrderFromSearch(productId)', '// v290: סימון מעדכן רק את השורה');
 
@@ -26,13 +27,14 @@ function build(state) {
   const log = [];
   const fn = new Function(
     '$', 'products', 'appOrders', 'appSearch', 'askProduct', 'askMark', 'askQty',
-    'buzz', 'showToast', 'saveAppOrders', 'refreshAppRows', 'refreshAppPanels',
+    'askBarcode', 'buzz', 'showToast', 'saveAppOrders', 'refreshAppRows', 'refreshAppPanels',
     'refreshAppNotArrived', 'refreshAppOrderUi', 'nextAppOrderStamp', 'appOrderActive',
-    'appOrderIndex', 'barcodeForKey', 'setAskBarcode', 'appOrdersForProduct', 'log',
+    'appOrderIndex', 'barcodeForKey', 'setAskBarcode', 'appOrdersForProduct', 'anyModalOpen', 'log',
     code + `
     return {
       toggleAppOrder: toggleAppOrder,
       addAppOrderFromSearch: addAppOrderFromSearch,
+      maybeAskAppOrder: maybeAskAppOrder,
       answerAskOrder: answerAskOrder,
       stepAskQty: stepAskQty,
       state: () => ({ appOrders: appOrders, appSearch: appSearch, askMark: askMark, askQty: askQty }),
@@ -47,6 +49,7 @@ function build(state) {
     appOrders,
     appSearch,
     null, null, 1,
+    state.askBarcode || '',
     () => log.push('buzz'),
     (t) => log.push('toast:' + t),
     () => log.push('save'),
@@ -59,7 +62,8 @@ function build(state) {
     () => state.index || {},
     k => (state.barcodes || {})[k] || '',
     v => log.push('askBarcode:' + v),
-    () => [],
+    p => (state.marked || []).indexOf(p.id) >= 0 ? [{ key: p.id }] : [],
+    () => !!(els.askOrderModal && !els.askOrderModal.cls.hidden),
     log
   );
   api.el = el;
@@ -158,6 +162,39 @@ api = build({ products: P, appOrders: [] });
 api.toggleAppOrder('a', { name: 'שוקו פקק' }, '');
 api.answerAskOrder(true);
 check('הברקוד הממתין לא נמחק', api.log.some(x => String(x).indexOf('askBarcode:') === 0), false);
+
+// ===== שני המסלולים חולקים חלון אחד — שאף אחד לא ידרוס את השני =====
+
+// --- החזרה מאפליקציית הספק (v305) מציגה את הכותרת שלה, גם אחרי סימון ידני
+api = build({ products: P, appOrders: [], askBarcode: '7290003029433' });
+api.toggleAppOrder('a', { name: 'שוקו פקק' }, '');      // מסלול ידני — משנה כותרת
+api.answerAskOrder(false);
+api.maybeAskAppOrder();                                  // ואז החזרה מהספק
+check('החזרה מהספק מחזירה את הכותרת שלה', api.els.askOrderTitle.textContent, 'הזמנת באפליקציה של הספק?');
+check('החזרה מהספק מחזירה את הכפתורים', [api.els.askOrder_yes.textContent, api.els.askOrder_no.textContent], ['כן, הזמנתי', 'לא הזמנתי']);
+check('החזרה מהספק מנקה את מצב הסימון הידני', api.state().askMark, null);
+check('החזרה מהספק מציגה את הברקוד שהועתק', api.els.askOrderCode.textContent, '7290003029433');
+
+// --- ואישור אחריה עובר במסלול הברקוד: מנקה את הברקוד הממתין
+api.answerAskOrder(true);
+check('אישור אחרי חזרה מנקה את הברקוד הממתין', api.log.some(x => x === 'askBarcode:'), true);
+check('אישור אחרי חזרה מרענן את מסך ההזמנה', api.log.indexOf('orderUi') >= 0, true);
+
+// --- חלון פתוח חוסם את שאלת החזרה, כדי שהכותרת לא תתחלף באמצע
+api = build({ products: P, appOrders: [], askBarcode: '7290003029433' });
+api.toggleAppOrder('a', { name: 'שוקו פקק' }, '');      // החלון פתוח במצב כמות
+api.maybeAskAppOrder();                                  // חזרה מהספק בזמן שהוא פתוח
+check('חלון פתוח — הכותרת לא מתחלפת', api.els.askOrderTitle.textContent, 'כמה ארגזים הזמנת?');
+check('חלון פתוח — מצב הסימון הידני נשמר', api.state().askMark && api.state().askMark.key, 'a');
+api.stepAskQty(1);
+api.answerAskOrder(true);
+check('הסימון הידני הושלם בכמות שנבחרה', api.state().appOrders.map(x => x.amount), [2]);
+
+// --- מוצר שכבר סומן ידנית לא נשאל שוב בחזרה מהספק
+api = build({ products: P, appOrders: [], askBarcode: '7290003029433', marked: ['a'] });
+api.maybeAskAppOrder();
+check('מסומן כבר — אין שאלה בחזרה', !!api.els.askOrderModal, false);
+check('מסומן כבר — הברקוד הממתין נוקה', api.log.some(x => x === 'askBarcode:'), true);
 
 console.log('\n' + '─'.repeat(46));
 console.log('עברו ' + pass + ' · נכשלו ' + fail);
