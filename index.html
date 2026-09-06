@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v301 הזמנה חוזרת פותחת הקשת כמות</title>
+    <title>הזמנות יטבתה - v302 כמות ב-−/+ בכל מקום, בלי חלון נפרד</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v301 הזמנה חוזרת פותחת הקשת כמות</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v302 כמות ב-−/+ בכל מקום, בלי חלון נפרד</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -332,27 +332,6 @@
         <div class="flex gap-2 p-4 pt-2">
           <button id="qty_cancel" class="btn-tap flex-1 py-3 rounded-xl font-black bg-slate-100 text-slate-500">ביטול</button>
           <button id="qty_done" class="btn-tap flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">סיום</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- v301: כמות שהוזמנה באפליקציה של הספק. חלון נפרד מחלון הכמות של
-         הקליטה/חזרות, שקשור למוצר סרוק ולרשימות שלהן. -->
-    <div id="aoQtyModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-4 z-[70]">
-      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-        <div class="p-5 text-center">
-          <div class="flex items-center justify-center gap-2 mb-1"><i class="fa-solid fa-mobile-screen text-blue-600 text-xl"></i><h3 class="font-black text-lg text-slate-800">כמה ארגזים הוזמנו באפליקציה?</h3></div>
-          <p id="aoQtyName" class="text-slate-700 font-bold text-sm"></p>
-          <div id="aoQtyPrev" class="hidden text-[11px] font-black text-amber-600 mt-1.5"></div>
-          <div class="flex items-center justify-center gap-3 mt-4">
-            <button id="aoQty_minus" class="btn-tap w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-2xl"><i class="fa-solid fa-minus"></i></button>
-            <input id="aoQtyVal" type="text" inputmode="numeric" value="1" class="w-24 h-16 text-center text-3xl font-black border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500">
-            <button id="aoQty_plus" class="btn-tap w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-2xl"><i class="fa-solid fa-plus"></i></button>
-          </div>
-        </div>
-        <div class="flex gap-2 p-4 pt-2">
-          <button id="aoQty_cancel" class="btn-tap flex-1 py-3 rounded-xl font-black bg-slate-100 text-slate-500">ביטול</button>
-          <button id="aoQty_done" class="btn-tap flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">אישור</button>
         </div>
       </div>
     </div>
@@ -586,7 +565,6 @@ let appOrdersLocalTs = 0;
 let appSearch = '';               // v291: חיפוש מוצר להוספה לרשימת "הוזמן באפליקציה"
 const LAST_BARCODE_KEY = 'yt_last_barcode';
 let lastCopiedBarcode = '';       // v294: הברקוד האחרון שהועתק — מסומן ברשימה
-let aoQtyKey = null, aoQtyName = ''; // v301: חלון הקשת כמות שהוזמנה באפליקציה
 let appOrderCache = null;         // אינדקס הסימונים הפעילים — נבנה פעם אחת לכל רינדור
 
 // ===== מצב קליטת תעודות =====
@@ -2717,7 +2695,7 @@ function appPanelHtml(orderId) {
           barcodeChipHtml(m.barcode) + '</span>' +
         '<span class="shrink-0 flex items-center gap-1">' +
           '<button data-role="app-minus" data-id="' + htmlEscape(m.key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
-          '<button data-role="app-qty" data-id="' + htmlEscape(m.key) + '" data-name="' + htmlEscape(m.name) + '" data-prev="' + m.qty + '" class="btn-tap text-[11px] font-black text-emerald-700 whitespace-nowrap px-1 underline decoration-emerald-300">' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</button>' +
+          '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</span>' +
           '<button data-role="app-plus" data-id="' + htmlEscape(m.key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
         '</span>' +
       '</div>').join('')
@@ -2791,47 +2769,6 @@ function toggleAppOrder(key, item, fromOrderId) {
   refreshAppPanels();
   refreshAppNotArrived();
 }
-// v301: הקשת הכמות שהוזמנה באפליקציה. נפתח כשמזמינים מחדש מוצר שלא הגיע
-// (בפעם הקודמת אולי הוזמנו 2 וכעת רוצים 1 או 3), וגם בלחיצה על הכמות בכל
-// שורה מסומנת — במקום להקיש −/+ שוב ושוב.
-function openAppQtyPrompt(key, name, prevQty) {
-  aoQtyKey = key; aoQtyName = name || '';
-  const n = $('aoQtyName'); if (n) n.textContent = aoQtyName;
-  const prev = $('aoQtyPrev');
-  if (prev) {
-    const q = Number(prevQty) || 0;
-    if (q > 0) { prev.textContent = 'בפעם הקודמת: ' + q + ' ' + (q === 1 ? 'ארגז' : 'ארגזים'); prev.classList.remove('hidden'); }
-    else { prev.textContent = ''; prev.classList.add('hidden'); }
-  }
-  const v = $('aoQtyVal'); if (v) v.value = '1';
-  const m = $('aoQtyModal'); if (!m) return;
-  m.classList.remove('hidden'); m.classList.add('flex');
-  setTimeout(() => { const i = $('aoQtyVal'); if (i) { i.focus(); i.select(); } }, 80);
-}
-function hideAppQty() {
-  const m = $('aoQtyModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
-  aoQtyKey = null; aoQtyName = '';
-}
-function stepAppQtyInput(d) {
-  const el = $('aoQtyVal'); if (!el) return;
-  let q = parseInt((el.value || '').replace(/[^0-9]/g, ''), 10);
-  if (!(q > 0)) q = 1;
-  el.value = String(Math.max(1, q + d));
-}
-function commitAppQty() {
-  const key = aoQtyKey, name = aoQtyName;
-  if (!key) { hideAppQty(); return; }
-  let q = parseInt(($('aoQtyVal').value || '').replace(/[^0-9]/g, ''), 10);
-  if (!(q > 0)) q = 1;
-  appOrders = (appOrders || []).filter(x => !(x && x.key === key));
-  appOrders = appOrders.concat([{ key, name, amount: q, at: nextAppOrderStamp(), fromOrderId: '' }]);
-  saveAppOrders();
-  buzz(18);
-  hideAppQty();
-  refreshAppRows(key);
-  refreshAppPanels();
-  refreshAppNotArrived();
-}
 // הסרה ידנית של מוצר שלא הגיע מרשימת החוסרים
 function dropAppOrder(key) {
   appOrders = (appOrders || []).filter(x => !(x && x.key === key));
@@ -2850,7 +2787,7 @@ function refreshAppNotArrived() {
 }
 function appNotArrivedRowHtml(m) {
   // הזמנה חוזרת פותחת הקשת כמות — הכמות הקודמת אינה בהכרח הכמות עכשיו
-  const remark = ' data-role="app-remark" data-id="' + htmlEscape(m.key) + '" data-name="' + htmlEscape(m.name) + '" data-prev="' + htmlEscape(m.qty) + '"';
+  const remark = ' data-role="app-mark" data-id="' + htmlEscape(m.key) + '" data-name="' + htmlEscape(m.name) + '"';
   return '<div class="flex items-start gap-2">' +
     '<button' + remark + ' class="btn-tap shrink-0 w-6 h-6 rounded-md bg-white border-2 border-rose-300 text-transparent flex items-center justify-center"><i class="fa-solid fa-check text-[11px]"></i></button>' +
     '<span class="min-w-0 flex-1"><span class="block text-sm font-bold text-rose-800 truncate">' + htmlEscape(m.name) + '</span>' +
@@ -2907,7 +2844,7 @@ function appMissingRowHtml(it, orderId) {
   return '<div class="flex items-start gap-2 flex-wrap"' + data + '>' + check + name +
     '<span class="shrink-0 flex items-center gap-1">' +
       '<button data-role="app-minus" data-id="' + htmlEscape(key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>' +
-      '<button data-role="app-qty" data-id="' + htmlEscape(key) + '" data-name="' + htmlEscape(it.name) + '" data-prev="' + appOrderQtyOf(marks) + '" class="btn-tap text-[11px] font-black text-emerald-700 whitespace-nowrap px-1 underline decoration-emerald-300">' + appOrderQtyText(marks) + '</button>' +
+      '<span class="text-[11px] font-black text-emerald-700 whitespace-nowrap px-1">' + appOrderQtyText(marks) + '</span>' +
       '<button data-role="app-plus" data-id="' + htmlEscape(key) + '" class="btn-tap w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>' +
     '</span>' +
     '<span class="w-full text-[10px] font-bold text-emerald-600 pr-8">' +
@@ -16640,12 +16577,6 @@ $('qty_minus').addEventListener('click', () => qtyStep(-1));
 $('qty_plus').addEventListener('click', () => qtyStep(1));
 $('qty_done').addEventListener('click', () => commitQty(false));
 $('qty_cancel').addEventListener('click', hideQty);
-// v301: חלון הכמות של "הוזמן באפליקציה"
-$('aoQty_minus').addEventListener('click', () => stepAppQtyInput(-1));
-$('aoQty_plus').addEventListener('click', () => stepAppQtyInput(1));
-$('aoQty_done').addEventListener('click', commitAppQty);
-$('aoQty_cancel').addEventListener('click', hideAppQty);
-$('aoQtyVal').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitAppQty(); } });
 $('mr_cancel').addEventListener('click', closeManualReturn);
 $('mr_add').addEventListener('click', addManualReturn);
 $('mr_price').addEventListener('input', updateManualReturnTotal);
@@ -17026,15 +16957,14 @@ app.addEventListener('click', (e) => {
   else if (role === 'app-mark') {
     const oid = t.dataset.oid || '';
     const ord = history.find(x => x.id === oid);
-    const line = ord ? (ord.items || []).find(x => orderItemKey(x) === id) : null;
+    // שורת "לא הגיע" אינה שייכת להזמנה לנהג, ולכן השם מגיע מהשורה עצמה
+    const line = (ord ? (ord.items || []).find(x => orderItemKey(x) === id) : null) || (t.dataset.name ? { name: t.dataset.name } : null);
     toggleAppOrder(id, line, oid);
   }
   else if (role === 'app-minus') stepAppOrder(id, -1);
   else if (role === 'app-plus') stepAppOrder(id, 1);
   else if (role === 'app-add') addAppOrderFromSearch(id); // v291: הוספה מהחיפוש
   else if (role === 'app-drop') dropAppOrder(id);         // v300: הסרה מרשימת "לא הגיע"
-  // v301: הזמנה חוזרת והקשת כמות — הכמות הקודמת מוצגת כרמז בלבד
-  else if (role === 'app-remark' || role === 'app-qty') openAppQtyPrompt(id, t.dataset.name || '', parseInt(t.dataset.prev, 10) || 0);
   else if (role === 'copy-barcode') copyBarcode(t.dataset.code); // v292
   else if (role === 'ret-add') addReturn(id);
   else if (role === 'ret-scan') openReturnsScanner();
