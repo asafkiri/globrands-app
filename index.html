@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v294 הברקוד האחרון שהועתק נשאר מסומן</title>
+    <title>הזמנות יטבתה - v295 סימון תמיד מתחיל בארגז אחד</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -125,7 +125,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v294 הברקוד האחרון שהועתק נשאר מסומן</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v295 סימון תמיד מתחיל בארגז אחד</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -2721,10 +2721,10 @@ function toggleAppOrder(key, item, fromOrderId) {
   const had = (appOrders || []).some(x => x && x.key === key && !appOrderArrived(x));
   if (had) appOrders = appOrders.filter(x => !(x && x.key === key));
   else {
-    // ברירת מחדל: הכמות שהוזמנה במקור כשהיא בארגזים, אחרת ארגז אחד
-    const orig = parseInt((item && item.amount), 10) || 0;
-    const amount = (item && item.unit === 'ארגזים' && orig > 0) ? orig : 1;
-    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount, at: Date.now(), fromOrderId: fromOrderId || '' }]);
+    // v295: תמיד ארגז אחד. קודם הכמות נגזרה מההזמנה המקורית, ואז חלק
+    // מהמוצרים יצאו 2 וחלק 1 בלי שום סימן חיצוני למה — התנהגות שנראית
+    // אקראית. ברירת מחדל אחת וקבועה, ומי שצריך יותר מוסיף ב-+.
+    appOrders = (appOrders || []).concat([{ key, name: (item && item.name) || '', amount: 1, at: Date.now(), fromOrderId: fromOrderId || '' }]);
   }
   saveAppOrders();
   buzz(had ? 8 : 18);
