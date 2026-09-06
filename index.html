@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v286 חזרות — העברת פער זיכוי לרשימת החזרות הפתוחה</title>
+    <title>הזמנות יטבתה - v287 חזרות — תעודה שהפער שלה הועבר נשארת ירוקה, עם הערה קטנה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -111,7 +111,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v286 חזרות — העברת פער זיכוי לרשימת החזרות הפתוחה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v287 חזרות — תעודה שהפער שלה הועבר נשארת ירוקה, עם הערה קטנה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -2714,15 +2714,14 @@ function renderReturnsHistory() {
       const credited = !!r.credited;
       const di = returnsDiscrepancyInfo(r);
       const openGap = credited && di.open;
-      const carriedOnly = credited && !openGap && di.carried.length > 0;
       const credDate = r.creditedAt ? new Date(r.creditedAt).toLocaleDateString('he-IL') : '';
+      // v287: תעודה שהפער שלה הועבר לחזרות היא תעודה סגורה לכל דבר — ירוקה
+      // כמו כל אימות, וההעברה מצוינת בהערה קטנה בגוף הכרטיס בלבד.
       const statusBar = !credited
         ? '<div class="bg-amber-400 text-amber-900 px-4 py-2.5 flex items-center gap-2 font-black"><i class="fa-solid fa-hourglass-half"></i> ממתין לאימות זיכוי<button data-role="ret-resend" data-id="' + r.id + '" class="btn-tap mr-auto text-[11px] bg-white/80 text-amber-900 border border-amber-500/40 rounded-lg px-2.5 py-1 font-black"><i class="fa-brands fa-whatsapp"></i> שלח שוב</button></div>'
         : (openGap
           ? '<div class="bg-rose-500 text-white px-4 py-2.5 flex items-center gap-2 font-black"><i class="fa-solid fa-triangle-exclamation"></i> אומת — נותר פער בזיכוי</div>'
-          : (carriedOnly
-            ? '<div class="bg-blue-600 text-white px-4 py-2.5 flex items-center gap-2 font-black"><i class="fa-solid fa-forward"></i> אומת · הפער הועבר לחזרות הפתוחות</div>'
-            : '<div class="bg-green-500 text-white px-4 py-2.5 flex items-center gap-2 font-black"><i class="fa-solid fa-circle-check"></i> הזיכוי אומת' + (credDate ? ' · ' + credDate : '') + '</div>'));
+          : '<div class="bg-green-500 text-white px-4 py-2.5 flex items-center gap-2 font-black"><i class="fa-solid fa-circle-check"></i> הזיכוי אומת' + (credDate ? ' · ' + credDate : '') + '</div>');
       const owedDiff = di.owed;
       const breakdown = openGap ?
         ((Math.abs(owedDiff) > 0.5
@@ -2749,7 +2748,7 @@ function renderReturnsHistory() {
             '<button data-role="rv-open" data-id="' + r.id + '" class="btn-tap flex-1 font-black py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 ' + (openGap ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700') + '"><i class="fa-solid ' + (openGap ? 'fa-wrench' : 'fa-pen') + '"></i> ' + (openGap ? 'תקן פער' : 'ערוך אימות') + '</button>' +
             '<button data-role="uncredit" data-id="' + r.id + '" class="btn-tap px-3 font-bold py-2.5 rounded-xl text-sm bg-slate-100 text-slate-500"><i class="fa-solid fa-rotate-left"></i></button>' +
           '</div>' + '<button data-role="ret-edit-items" data-id="' + r.id + '" class="btn-tap w-full mt-2 bg-white border border-indigo-200 text-indigo-700 rounded-xl py-2 font-black text-[11px]"><i class="fa-solid fa-pen-to-square"></i> ערוך פריטים בתעודה</button>';
-      return '<div class="bg-white rounded-2xl shadow-sm border ' + (credited ? (openGap ? 'border-rose-300' : (carriedOnly ? 'border-blue-300' : 'border-green-300')) : 'border-amber-300') + ' overflow-hidden mb-4">' +
+      return '<div class="bg-white rounded-2xl shadow-sm border ' + (credited ? (openGap ? 'border-rose-300' : 'border-green-300') : 'border-amber-300') + ' overflow-hidden mb-4">' +
         statusBar +
         '<div class="p-4 border-b border-slate-100 flex justify-between items-center">' +
           '<div><div class="font-black text-slate-800">' + d.toLocaleDateString('he-IL') + ' · ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
@@ -2894,14 +2893,19 @@ async function undoReturnCarry(id, opts) {
   showToast('ההעברה בוטלה — הפער חזר לתעודה', null, null, 2800);
   return true;
 }
+// v287: הערה קטנה ושקטה בלבד — התעודה עצמה סגורה וירוקה, וההערה רק מזכירה
+// לאן הלך הפער ומאפשרת לבטל.
 function retCarryBoxHtml(r) {
   const di = returnsDiscrepancyInfo(r);
   if (!di.carried.length) return '';
-  const rows = di.carried.map(x => '<div class="flex justify-between text-blue-700"><span>' + (x.amountOnly ? htmlEscape(x.name || 'השלמת זיכוי') : ((Number(x.qty) || 0) + ' × ' + htmlEscape(x.name || ''))) + (Number(x.at) ? ' · ' + new Date(Number(x.at)).toLocaleDateString('he-IL') : '') + '</span><span>₪' + fmtMoney(lineTotalFromUnit(x.price, x.qty)) + '</span></div>').join('');
-  return '<div class="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-xs text-blue-800 mb-2">' +
-    '<div class="font-black mb-1"><i class="fa-solid fa-forward"></i> הפער הועבר לחזרות הפתוחות ✓</div>' + rows +
-    '<div class="text-[11px] text-blue-600/80 font-bold mt-1">ייכלל בתעודת החזרות הבאה שתישלח לספק · סה״כ ₪' + fmtMoney(di.carriedVal) + '</div>' +
-    '<button data-role="ret-carry-undo" data-id="' + r.id + '" class="btn-tap mt-2 w-full bg-white border border-blue-200 text-blue-700 rounded-lg py-1.5 font-black text-[11px]"><i class="fa-solid fa-rotate-left"></i> בטל העברה</button>' +
+  const what = di.carried.map(x => x.amountOnly ? '₪' + fmtMoney(lineTotalFromUnit(x.price, x.qty)) : ((Number(x.qty) || 0) + ' × ' + htmlEscape(x.name || ''))).join(' · ');
+  const when = Number(di.carried[0] && di.carried[0].at) ? new Date(Number(di.carried[0].at)).toLocaleDateString('he-IL') : '';
+  return '<div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-2 flex items-start gap-2">' +
+    '<i class="fa-solid fa-forward text-slate-400 text-[11px] mt-0.5"></i>' +
+    '<div class="min-w-0 flex-1">' +
+      '<div class="text-[11px] text-slate-500 font-bold leading-relaxed">פער של ₪' + fmtMoney(di.carriedVal) + ' הועבר לרשימת החזרות הפתוחה' + (when ? ' ב-' + when : '') + ' — ' + what + ' · ייתבע בתעודת החזרות הבאה</div>' +
+      '<button data-role="ret-carry-undo" data-id="' + r.id + '" class="btn-tap mt-1 text-[11px] font-black text-slate-500 underline decoration-slate-300"><i class="fa-solid fa-rotate-left"></i> בטל העברה</button>' +
+    '</div>' +
   '</div>';
 }
 function retCarryBtnHtml(r) {
@@ -11562,16 +11566,13 @@ function returnCardInReceipts(r) {
   const credited = !!r.credited;
   const rdi = returnsDiscrepancyInfo(r);
   const openGap = credited && rdi.open;
-  const carriedOnly = credited && !openGap && rdi.carried.length > 0;
-  const barCls = !credited ? 'bg-amber-400 text-amber-900' : (openGap ? 'bg-rose-500 text-white' : (carriedOnly ? 'bg-blue-600 text-white' : 'bg-emerald-500 text-white'));
-  const borderCls = !credited ? 'border-amber-300' : (openGap ? 'border-rose-300' : (carriedOnly ? 'border-blue-300' : 'border-emerald-300'));
+  const barCls = !credited ? 'bg-amber-400 text-amber-900' : (openGap ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white');
+  const borderCls = !credited ? 'border-amber-300' : (openGap ? 'border-rose-300' : 'border-emerald-300');
   const statusTxt = !credited
     ? '<i class="fa-solid fa-hourglass-half"></i> לא אומתה'
     : (openGap
       ? '<i class="fa-solid fa-triangle-exclamation"></i> נותר פער'
-      : (carriedOnly
-        ? '<i class="fa-solid fa-forward"></i> הפער הועבר לחזרות'
-        : '<i class="fa-solid fa-circle-check"></i> אומתה' + (r.creditedAt ? ' · ' + new Date(r.creditedAt).toLocaleDateString('he-IL') : '')));
+      : '<i class="fa-solid fa-circle-check"></i> אומתה' + (r.creditedAt ? ' · ' + new Date(r.creditedAt).toLocaleDateString('he-IL') : ''));
   const rows = (r.items || []).map(it =>
     '<div class="flex items-center justify-between gap-2 py-1 border-b border-slate-100 last:border-0">' +
       '<div class="min-w-0"><div class="text-sm font-bold text-slate-700 truncate">' + it.name + '</div><div class="text-[11px] text-slate-400"><i class="fa-solid fa-barcode"></i> ' + (it.barcode || '—') + '</div></div>' +
@@ -12741,7 +12742,7 @@ function receiptRangeDocsListHtml(d) {
     const credited = !!x.r.credited;
     const gap = credited && rdi.open;
     const netEx = Math.max(0, r2(rt.ex - rdi.carriedVal));
-    const st = !credited ? ' · <span class="text-amber-700 font-black">לא אומתה</span>' : (gap ? ' · <span class="text-rose-600 font-black">נותר פער</span>' : (rdi.carriedVal > 0.5 ? ' · <span class="text-blue-600 font-black">פער ₪' + fmtMoney(rdi.carriedVal) + ' הועבר לחזרות</span>' : ' · <span class="text-emerald-700 font-black">אומתה</span>'));
+    const st = !credited ? ' · <span class="text-amber-700 font-black">לא אומתה</span>' : (gap ? ' · <span class="text-rose-600 font-black">נותר פער</span>' : ' · <span class="text-emerald-700 font-black">אומתה</span>' + (rdi.carriedVal > 0.5 ? ' · <span class="text-slate-400">פער ₪' + fmtMoney(rdi.carriedVal) + ' הועבר לחזרות</span>' : ''));
     return '<div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0">' +
       '<div class="min-w-0"><div class="text-sm font-bold text-slate-800 truncate"><i class="fa-solid fa-rotate-left text-emerald-600"></i> חזרה · ' + day + '</div><div class="text-[11px] text-slate-500">' + ((x.r.items || []).length) + ' פריטים' + (x.r.sentTo ? ' · ' + htmlEscape(x.r.sentTo) : '') + st + '</div></div>' +
       '<div class="text-sm font-black text-emerald-700 shrink-0">−₪' + fmtMoney(netEx) + '</div>' +
