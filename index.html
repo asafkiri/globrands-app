@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v322 הדבקה חוזרת לא נוגעת במה שכבר מסומן</title>
+    <title>הזמנות יטבתה - v323 מסומן ואינו בהדבקה — עם הסרה במקום</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v322 הדבקה חוזרת לא נוגעת במה שכבר מסומן</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v323 מסומן ואינו בהדבקה — עם הסרה במקום</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3370,6 +3370,15 @@ function analyzeOrderPaste(txt) {
 }
 // מה שההדבקה תשנה בפועל — זה מה שנספר בכפתור ומה שנכתב
 function orderPasteWillWrite(hit) { return (hit || []).filter(h => h.status !== 'same'); }
+// מה שמסומן אצלנו ואינו בהדבקה. אלה לא נמחקים אוטומטית לעולם: סימון
+// שנשאר מהזמנה קודמת באותו שבוע הוא מצב תקין לחלוטין, ומחיקה אוטומטית
+// הייתה מוחקת דווקא אותו. מוצג כדי שאפשר יהיה לראות ולהחליט — כי סימון
+// שלא הוזמן בפועל מוריד את המוצר גם מההזמנה לנהג.
+function orderPasteExtras(hit) {
+  const inPaste = {};
+  (hit || []).forEach(h => { inPaste[h.id] = 1; });
+  return appActiveList().filter(m => !inPaste[m.key]);
+}
 
 let orderPaste = null;   // { step: 'input' | 'preview', text, hit, miss, attach, attachQ }
 
@@ -3377,8 +3386,21 @@ function orderPasteReanalyze() {
   const r = analyzeOrderPaste(orderPaste.text);
   orderPaste.hit = r.hit;
   orderPaste.miss = r.miss;
+  orderPaste.extra = orderPasteExtras(r.hit);
 }
-function openOrderPaste() { orderPaste = { step: 'input', text: '', hit: [], miss: [], attach: null, attachQ: '' }; renderAppOrders(); }
+function openOrderPaste() { orderPaste = { step: 'input', text: '', hit: [], miss: [], extra: [], attach: null, attachQ: '' }; renderAppOrders(); }
+// הסרת סימון ישירות מתוך התצוגה המקדימה, בלי לצאת ולחפש אותו ברשימה
+function pasteDropExtra(key) {
+  if (!key) return;
+  const gone = (appOrders || []).find(x => x && x.key === key);
+  const name = (gone && gone.name) || (products.find(p => p.id === key) || {}).name || '';
+  appOrders = (appOrders || []).filter(x => !(x && x.key === key));
+  saveAppOrders();
+  buzz(8);
+  if (orderPaste) orderPasteReanalyze();
+  renderAppOrders();
+  showToast('הוסר הסימון · ' + name, null, null, 2200);
+}
 function closeOrderPaste() { orderPaste = null; renderAppOrders(); }
 function analyzeOrderPasteFromBox() {
   const box = document.querySelector('#app [data-role="paste-text"]');
@@ -3514,6 +3536,17 @@ function orderPasteHtml() {
     '</div>';
   }).join('');
 
+  const extra = orderPaste.extra || [];
+  const extraRows = extra.map(m =>
+    '<div class="flex items-start gap-2 py-1.5 border-b border-slate-200 last:border-0">' +
+      '<i class="fa-solid fa-circle-minus text-slate-300 text-[11px] mt-1 shrink-0"></i>' +
+      '<span class="min-w-0 flex-1">' +
+        '<span class="block text-sm font-bold text-slate-600 truncate">' + htmlEscape(m.name) + '</span>' +
+        '<span class="block text-[10px] font-bold text-slate-400">מסומן ' + m.qty + ' ' + (m.qty === 1 ? 'ארגז' : 'ארגזים') + '</span>' +
+      '</span>' +
+      '<button data-role="paste-drop" data-id="' + htmlEscape(m.key) + '" class="btn-tap shrink-0 text-[10px] font-black text-rose-600 bg-white border border-rose-200 rounded-lg px-2.5 py-1.5 whitespace-nowrap mt-0.5"><i class="fa-solid fa-xmark"></i> הסר סימון</button>' +
+    '</div>').join('');
+
   const attach = orderPaste.attach;
   const missRows = miss.map(m =>
     '<div class="py-1.5 border-b border-amber-100 last:border-0">' +
@@ -3555,6 +3588,13 @@ function orderPasteHtml() {
       ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-2">' +
           '<div class="text-[11px] font-black text-amber-700 mb-1">מק״טים שלא מוכרים לנו — שייכו אותם פעם אחת והם ייקלטו לבד מכאן והלאה</div>' +
           missRows +
+        '</div>'
+      : '') +
+    (extra.length
+      ? '<div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-2">' +
+          '<div class="text-[11px] font-black text-slate-600">מסומן אצלכם ואינו בהדבקה · ' + extra.length + '</div>' +
+          '<div class="text-[10px] font-bold text-slate-400 mb-1.5">אם הזמנתם אותם בהזמנה אחרת — הכל תקין ואין מה לעשות. אם בסוף לא הזמנתם אותם, הסירו כאן: סימון יורד גם מההזמנה לנהג, ואז לא תזמינו אותם משום מקום.</div>' +
+          extraRows +
         '</div>'
       : '') +
     '<div class="flex gap-2">' +
@@ -17939,6 +17979,7 @@ app.addEventListener('click', (e) => {
   else if (role === 'paste-attach') startPasteAttach(t.dataset.sku);
   else if (role === 'paste-attach-cancel') { if (orderPaste) { orderPaste.attach = null; orderPaste.attachQ = ''; renderAppOrders(); } }
   else if (role === 'paste-attach-pick') pasteAttachPick(id);
+  else if (role === 'paste-drop') pasteDropExtra(id);
   else if (role === 'copy-barcode') copyBarcode(t.dataset.code); // v292
   else if (role === 'ret-add') addReturn(id);
   else if (role === 'ret-scan') openReturnsScanner();

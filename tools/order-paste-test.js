@@ -21,9 +21,16 @@ const code =
 // marks: { productId: כמות מסומנת פעילה }
 function build(products, marks) {
   const m = marks || {};
-  const f = new Function('products', 'appOrdersFor', 'appOrderQtyOf',
-    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine, willWrite: orderPasteWillWrite };');
-  return f(products || [], k => (m[k] ? [{ amount: m[k] }] : []), list => (list || []).reduce((a, x) => a + (Number(x.amount) || 0), 0));
+  const f = new Function('products', 'appOrdersFor', 'appOrderQtyOf', 'appActiveList',
+    code + '\nreturn { parse: parseSupplierOrder, analyze: analyzeOrderPaste, clean: pasteCleanLine, willWrite: orderPasteWillWrite, extras: orderPasteExtras };');
+  return f(products || [],
+    k => (m[k] ? [{ amount: m[k] }] : []),
+    list => (list || []).reduce((a, x) => a + (Number(x.amount) || 0), 0),
+    // כמו appActiveList האמיתי: כל מה שמסומן פעיל, לפי מפתח
+    () => Object.keys(m).filter(k => m[k] > 0).map(k => ({
+      key: k, qty: m[k],
+      name: ((products || []).find(p => p.id === k) || {}).name || k
+    })));
 }
 
 let pass = 0, fail = 0;
@@ -141,6 +148,26 @@ check('תערובת — נכתבים רק מה שחסר ומה שהשתנה',
   mixed.willWrite(a.hit).map(h => h.id), ['p2', 'p3']);
 check('תערובת — מה שכבר נכון לא נגע', mixed.willWrite(a.hit).some(h => h.id === 'p1'), false);
 
+// ===== "מסומן אצלך ואינו בהדבקה" =====
+// p9 מסומן אבל אינו בדף ההזמנה — או שהוזמן בהזמנה אחרת, או שבסוף לא הוזמן
+const P4 = P3.concat([{ id: 'p9', name: 'חלב אדום', sku: '344072' }]);
+let api4 = build(P4, { p1: 1, p9: 2 });
+a = api4.analyze(paste3);
+check('מסומן שאינו בהדבקה מופיע כחריג', api4.extras(a.hit).map(x => x.key), ['p9']);
+check('מסומן שכן בהדבקה אינו חריג', api4.extras(a.hit).some(x => x.key === 'p1'), false);
+check('החריג נושא את הכמות שלו לתצוגה', api4.extras(a.hit)[0].qty, 2);
+
+// --- ההדבקה עצמה לא נוגעת בחריגים: הם לא נכתבים ולא נמחקים
+check('חריג אינו נכנס למה שייכתב', api4.willWrite(a.hit).some(h => h.id === 'p9'), false);
+
+// --- בלי שום סימון חורג הרשימה ריקה
+api4 = build(P4, { p1: 1 });
+check('אין חריגים כשהכל בהדבקה', api4.extras(api4.analyze(paste3).hit).length, 0);
+
+// --- מוצר שאין לו כרטיס (מפתח שם) גם הוא חריג לגיטימי
+api4 = build(P4, { 'name:מוצר ידני': 1 });
+check('סימון לפי שם נחשב חריג', api4.extras(api4.analyze(paste3).hit).map(x => x.key), ['name:מוצר ידני']);
+
 
 // ===== מול דפי ההזמנה האמיתיים, אם יש =====
 const dir = process.argv[2] || process.env.SAMPLES;
@@ -198,6 +225,18 @@ if (dir && fs.existsSync(dir)) {
         check('סימון חלקי — נכתב בדיוק מה שאינו מסומן נכון', partWrite.map(h => h.id).sort(), expect);
         check('סימון חלקי — לא נכתב כלום שכבר היה נכון',
           partWrite.some(h => half[h.id] === h.qty), false);
+
+        // --- חריגים על הנתונים האמיתיים: כל 28 הסימונים נמצאים בהדבקה
+        check('המצב האמיתי — אין סימון חורג', withMarks.extras(re.hit).length, 0);
+        // וכשמוסיפים סימון למוצר שאינו בהזמנה, הוא ואך ורק הוא מופיע
+        const outsider = prods.find(p => p.sku && !re.hit.some(h => h.id === p.id));
+        if (outsider) {
+          const plus = Object.assign({}, marks); plus[outsider.id] = 2;
+          const plusApi = build(prods, plus);
+          const ex = plusApi.extras(plusApi.analyze(fs.readFileSync(pasteFile, 'utf8')).hit);
+          console.log('   סימון אחד מחוץ להזמנה (' + outsider.name + ') → חריגים: ' + ex.length);
+          check('סימון מחוץ להזמנה מופיע כחריג יחיד', ex.map(x => x.key), [outsider.id]);
+        }
       }
     }
   }
