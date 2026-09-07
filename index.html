@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v326 צילום תעודה בתחילת הקליטה</title>
+    <title>הזמנות יטבתה - v327 צילום תעודה בתחילת הקליטה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v326 צילום תעודה בתחילת הקליטה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v327 צילום תעודה בתחילת הקליטה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -1049,8 +1049,10 @@ function yotvataPhotoGateHtml() {
       (aiScanDocuments.length > 1 ? '<button data-role="rc-photo-remove-doc" data-doc="' + i + '" class="text-xs font-bold text-rose-600">הסר תעודה</button>' : '') + '</div>' +
       (cached ? '<div class="text-sm font-bold text-emerald-700 mt-2">הפענוח שמור — אין צורך בסריקה נוספת</div>' : '') +
       (pages ? '<div class="flex gap-2 overflow-x-auto py-3">' + pages + '</div>' : '') +
-      '<input id="aiDocFile_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" capture="environment" multiple class="hidden">' +
-      '<button data-role="ai-add-photo" data-doc="' + i + '" class="btn-tap w-full mt-2 py-3 bg-blue-50 text-blue-700 rounded-xl font-black"><i class="fa-solid fa-camera"></i> ' + (cached && !doc.pages.length ? 'צלם מחדש את כל עמודי התעודה' : doc.pages.length ? 'הוסף עמוד לתעודה הזו' : 'צלם את התעודה') + '</button></div>';
+      '<input id="aiDocCam_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" capture="environment" class="hidden">' +
+      '<input id="aiDocFile_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" multiple class="hidden">' +
+      '<button data-role="ai-add-photo" data-doc="' + i + '" class="btn-tap w-full mt-2 py-3 bg-blue-50 text-blue-700 rounded-xl font-black"><i class="fa-solid fa-camera"></i> ' + (cached && !doc.pages.length ? 'צלם מחדש את כל עמודי התעודה' : doc.pages.length ? 'הוסף עמוד לתעודה הזו' : 'צלם את התעודה') + '</button>' +
+      '<button data-role="ai-add-photo-gallery" data-doc="' + i + '" class="btn-tap w-full mt-2 py-2 bg-white border border-slate-200 text-slate-500 rounded-xl font-bold text-sm"><i class="fa-solid fa-images"></i> בחר תמונות מהגלריה</button></div>';
   }).join('');
   const ready = yotvataPhotoReady();
   return '<div class="bg-white border border-slate-200 rounded-2xl p-4 mb-24 shadow-sm"><div class="text-xs font-black text-blue-600">שלב 1 · צילום תעודה</div>' +
@@ -11674,8 +11676,10 @@ function aiInvoiceCaptureHtml() {
     const pages = doc.pages.map((p, pi) => '<div class="relative w-28 h-28 shrink-0 rounded-lg overflow-hidden border-2 ' + (p.orientationConfirmed ? 'border-emerald-400' : 'border-amber-400') + ' bg-white"><button data-role="ai-review-page" data-doc="' + i + '" data-page="' + pi + '" class="absolute inset-0 w-full h-full"><img src="' + p.dataUrl + '" class="w-full h-full object-contain" alt="פתח בדיקת כיוון"></button><button data-role="ai-remove-page" data-doc="' + i + '" data-page="' + pi + '" aria-label="מחק עמוד" class="absolute top-1 left-1 w-7 h-7 rounded-full bg-rose-600 text-white text-xs shadow z-10"><i class="fa-solid fa-xmark"></i></button><button data-role="ai-review-page" data-doc="' + i + '" data-page="' + pi + '" aria-label="פתח תמונה גדולה וסובב" class="absolute top-1 right-1 w-7 h-7 rounded-full bg-blue-600 text-white text-xs shadow z-10"><i class="fa-solid fa-expand"></i></button><div class="absolute bottom-0 inset-x-0 ' + (p.orientationConfirmed ? 'bg-emerald-700/90' : 'bg-amber-600/95') + ' text-white text-[9px] font-black text-center py-1 pointer-events-none">' + (p.orientationConfirmed ? '✓ הכיוון אושר' : 'דרוש אישור') + ' · עמוד ' + (pi + 1) + ((Number(p.rotation) || 0) ? ' · ' + (Number(p.rotation) || 0) + '°' : '') + (p.cropped ? ' · נחתך' : '') + '</div></div>').join('');
     return '<div class="rounded-2xl border-2 border-slate-200 p-3 mb-3"><div class="flex items-center justify-between gap-2"><div><div class="font-black text-slate-800">תעודה ' + (i + 1) + '</div><div class="text-[11px] font-bold text-slate-500">' + noteText + '</div></div><span class="text-xs font-black ' + (doc.pages.length ? 'text-emerald-700' : 'text-rose-600') + '">' + doc.pages.length + ' עמודים</span></div>' +
       (pages ? '<div class="flex gap-2 overflow-x-auto py-3">' + pages + '</div>' : '<div class="rounded-xl bg-amber-50 border border-amber-200 p-2 text-xs font-bold text-amber-800 my-3">צלם את כל דפי התעודה. צילום אחד ברור לכל דף.</div>') +
-      '<input id="aiDocFile_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" capture="environment" multiple class="hidden">' +
-      '<button data-role="ai-add-photo" data-doc="' + i + '" class="btn-tap w-full bg-slate-100 text-slate-700 rounded-xl py-2.5 font-black"><i class="fa-solid fa-camera"></i> ' + (doc.pages.length ? 'הוסף עמוד נוסף' : 'צלם תעודה') + '</button></div>';
+      '<input id="aiDocCam_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" capture="environment" class="hidden">' +
+      '<input id="aiDocFile_' + i + '" data-role="ai-file" data-doc="' + i + '" type="file" accept="image/*" multiple class="hidden">' +
+      '<button data-role="ai-add-photo" data-doc="' + i + '" class="btn-tap w-full bg-slate-100 text-slate-700 rounded-xl py-2.5 font-black"><i class="fa-solid fa-camera"></i> ' + (doc.pages.length ? 'הוסף עמוד נוסף' : 'צלם תעודה') + '</button>' +
+      '<button data-role="ai-add-photo-gallery" data-doc="' + i + '" class="btn-tap w-full mt-2 py-2 bg-white border border-slate-200 text-slate-500 rounded-xl font-bold text-sm"><i class="fa-solid fa-images"></i> בחר תמונות מהגלריה</button></div>';
   }).join('');
   const ready = aiAllPagesOrientationConfirmed();
   return '<div class="bg-white rounded-2xl border-2 border-violet-200 p-4 shadow-sm mb-24"><div class="font-black text-xl text-slate-800"><i class="fa-solid fa-camera-retro text-violet-600"></i> סריקה חכמה של התעודות</div><div class="text-xs text-slate-500 font-bold leading-relaxed mt-1 mb-2">הבלש הפשוט לא פתר את הפער. צלם פעם אחת כל עמוד מכל תעודה. התמונות נשלחות לפענוח בלבד ואינן נשמרות באפליקציה.</div><div class="rounded-xl bg-blue-50 border border-blue-200 p-2 text-[11px] font-black text-blue-800 mb-3"><i class="fa-solid fa-expand"></i> כל צילום נפתח בגודל גדול. סובב עד שהכותרת למעלה והכתב ישר, ואז אשר. ללא אישור התמונה לא תישלח.</div>' +
@@ -18203,7 +18207,8 @@ app.addEventListener('click', (e) => {
     saveReceiptDraft(); renderReceiving(); return;
   }
   if (aiScanBusy && ['ai-run', 'ai-edit-images', 'ai-rescan', 'rc-notes-edit', 'rc-note-add', 'rc-note-remove', 'rc-open-nodoc', 'rc-nodoc-found', 'rc-attach-doc'].includes(role)) return;
-  if (role === 'ai-add-photo') { const input = $('aiDocFile_' + (parseInt(t.dataset.doc, 10) || 0)); if (input) input.click(); return; }
+  if (role === 'ai-add-photo') { if (aiScanBusy) return; const input = $('aiDocCam_' + (parseInt(t.dataset.doc, 10) || 0)); if (input) input.click(); return; }
+  if (role === 'ai-add-photo-gallery') { if (aiScanBusy) return; const input = $('aiDocFile_' + (parseInt(t.dataset.doc, 10) || 0)); if (input) input.click(); return; }
   if (role === 'ai-live-cam') { aiOpenLiveCamera(parseInt(t.dataset.doc, 10) || 0); return; }
   if (role === 'ai-review-page') { aiOpenOrientationReview(parseInt(t.dataset.doc, 10) || 0, parseInt(t.dataset.page, 10) || 0, !yotvataCachedDoc(aiScanDocuments[parseInt(t.dataset.doc, 10) || 0])); if (currentView === 'reconcile') renderReconcile(); return; }
   if (role === 'ai-remove-page') { aiRemoveInvoicePage(parseInt(t.dataset.doc, 10) || 0, parseInt(t.dataset.page, 10) || 0); return; }
