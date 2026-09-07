@@ -50,6 +50,32 @@ const payload = () => ({ ok: true, serviceVersion: 145, model: 'gpt-5.6-luna', r
   scanAudit: { version: 1, attempts: [{ model: 'gpt-5.6-luna', stage: 'initial', outcome: 'read', selected: true }] } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('background completion refreshes the visible invoice header without replacing the active input', () => {
+  const nodes = Object.fromEntries(['rcNoteSummaryLabel', 'rcNoteSummaryValue', 'rcPaperStatus', 'rcTotals', 'rcProgress', 'rcCount'].map(id => [id, {}]));
+  const activeInput = { value: '7', selectionStart: 1 };
+  nodes.activeQuantity = activeInput;
+  const c = context({
+    $: id => nodes[id], fmtMoney: n => Number(n).toFixed(2), htmlEscape: String,
+    receiptOpened: true, receiptPaperScanState: 'running',
+    receiptTotals: () => ({ ex: 4.18, units: 1 }),
+    receiptTotalsHtml: () => 'totals', receivingProgressHtml: () => 'progress',
+    renderReceiving() { throw new Error('Must preserve the scanner and active input'); }
+  });
+  vm.runInContext(['receiptNoteHeaderLabel', 'receiptNoteHeaderValue', 'refreshReceiptTotals', 'refreshScanHost', 'yotvataPaperStatusHtml'].map(source).join('\n'), c);
+  c.refreshScanHost();
+  assert.equal(nodes.rcNoteSummaryValue.textContent, 'התעודה בפענוח…');
+  c.aiScanDocuments = [input()];
+  const doc = paper(0, 971.42); doc.printedUnits = doc.rows[0].quantity = 244;
+  c.aiScanResponse = { scan: { documents: [doc] } };
+  assert.equal(c.yotvataAdoptPaperAnchors(), true);
+  assert.equal(nodes.rcNoteSummaryValue.textContent, '₪971.42');
+  assert.match(nodes.rcNoteSummaryLabel.textContent, /244/);
+  assert.match(nodes.rcPaperStatus.innerHTML, /סיכומיה אומתו/);
+  assert.equal(nodes.activeQuantity, activeInput);
+  assert.equal(activeInput.value, '7');
+  assert.equal(activeInput.selectionStart, 1);
+});
+
 test('background scan allows counting immediately; no premature comparison or analyzer call', async () => {
   const c = context(); let resolve, barcodeOpened = false;
   c.aiScanDocuments = [input()];
