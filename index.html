@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v325 צילום תעודה בתחילת הקליטה</title>
+    <title>הזמנות יטבתה - v326 צילום תעודה בתחילת הקליטה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v325 צילום תעודה בתחילת הקליטה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v326 צילום תעודה בתחילת הקליטה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -6509,7 +6509,7 @@ function renderReceiving() {
         noteEditorBodyHtml() +
       '</div>'
     : '<div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm mb-3 flex items-center justify-between gap-2">' +
-        '<div class="flex items-center gap-2 min-w-0"><i class="fa-solid fa-file-invoice text-blue-600"></i><div class="min-w-0"><div class="text-[11px] text-slate-400 font-bold">סכום התעודה (ללא מע״מ)' + (receiptNotes.length > 1 ? ' · ' + receiptNotes.length + ' תעודות' : '') + (receiptNoteUnits != null ? ' · ' + receiptNoteUnits + ' יח׳' : '') + '</div><div class="font-black text-slate-800">' + (receiptNoteTotal != null ? '₪' + fmtMoney(receiptNoteTotal) : 'ללא אימות') + '</div></div></div>' +
+        '<div class="flex items-center gap-2 min-w-0"><i class="fa-solid fa-file-invoice text-blue-600"></i><div class="min-w-0"><div id="rcNoteSummaryLabel" class="text-[11px] text-slate-400 font-bold">' + receiptNoteHeaderLabel() + '</div><div id="rcNoteSummaryValue" class="font-black text-slate-800">' + receiptNoteHeaderValue() + '</div></div></div>' +
         '<div class="flex items-center gap-1.5 shrink-0"><button data-role="rc-notes-edit" class="btn-tap text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-pen"></i> ערוך</button><button data-role="rc-cancel" class="btn-tap text-xs font-bold text-red-500 bg-red-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-xmark"></i></button></div>' +
       '</div>';
   const progress = receivingProgressHtml(t);
@@ -6571,7 +6571,19 @@ function refreshReceipt() { if (currentView === 'receiving') renderReceiving(); 
 // חלב 1 ל׳ הוקלד 12→24, הרשימה והסה"כ הראו 315 יח׳ / 1,651.84 ✓ אבל
 // הסרגל המשיך להציג 303 / 1,573.48 עם "פער ₪69.21" — פער שכבר לא קיים.
 // מעכשיו נקודת הרענון האחת מעדכנת את שלושתם יחד, מאותו חישוב totals אחד.
+function receiptNoteHeaderLabel() {
+  return 'סכום התעודה (ללא מע״מ)' + (receiptNotes.length > 1 ? ' · ' + receiptNotes.length + ' תעודות' : '') + (receiptNoteUnits != null ? ' · ' + receiptNoteUnits + ' יח׳' : '');
+}
+function receiptNoteHeaderValue() {
+  if (receiptNoteTotal != null) return '₪' + fmtMoney(receiptNoteTotal);
+  if (receiptEntryMode === 'photo' && receiptPaperScanState === 'running') return 'התעודה בפענוח…';
+  return 'ללא אימות';
+}
 function refreshReceiptTotals() {
+  const noteLabel = $('rcNoteSummaryLabel');
+  if (noteLabel) noteLabel.textContent = receiptNoteHeaderLabel();
+  const noteValue = $('rcNoteSummaryValue');
+  if (noteValue) noteValue.textContent = receiptNoteHeaderValue();
   const t = receiptTotals();
   const wrap = $('rcTotals');
   if (wrap) wrap.outerHTML = receiptTotalsHtml(t);
