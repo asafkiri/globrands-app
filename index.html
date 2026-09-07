@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v328 צילום תעודה בתחילת הקליטה</title>
+    <title>הזמנות יטבתה - v329 צילום תעודה בתחילת הקליטה</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v328 צילום תעודה בתחילת הקליטה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v329 צילום תעודה בתחילת הקליטה</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -239,16 +239,16 @@
           </div>
           <button id="aiOrientationCancel" type="button" class="btn-tap h-11 shrink-0 rounded-xl bg-rose-500/20 border border-rose-300/30 text-rose-100 px-3 flex items-center justify-center gap-1.5 font-black text-sm" aria-label="מחק את הצילום"><i class="fa-solid fa-trash-can"></i> מחק צילום</button>
         </div>
-        <div class="mt-2 rounded-xl bg-amber-400/15 border border-amber-300/30 px-3 py-2 text-sm font-black text-amber-100">
-          <i class="fa-solid fa-mobile-screen-button ml-1"></i> ודא שהכותרת למעלה ושהטקסט ישר. רוצה לחתוך? גרור את פינות המסגרת הירוקה — ואשר.
+        <div id="aiOrientationHint" class="mt-2 rounded-xl bg-amber-400/15 border border-amber-300/30 px-3 py-2 text-sm font-black text-amber-100">
+          התמונה נשמרת בשלמותה. ודא שהכותרת למעלה ושהטקסט ישר.
         </div>
       </div>
       <div class="relative flex-1 min-h-0 p-3 flex items-center justify-center overflow-hidden">
-        <img id="aiOrientationImage" alt="תצוגה מקדימה של התעודה" class="w-full h-full object-contain rounded-xl bg-white shadow-2xl">
+        <img id="aiOrientationImage" alt="תצוגה מקדימה של התעודה" class="w-full h-full object-contain bg-white shadow-2xl">
         <!-- v154: שכבת החיתוך הידני — נסתרת עד לחיצה על "חיתוך ידני" -->
         <canvas id="aiCropCanvas" class="hidden" style="position:absolute; touch-action:none;"></canvas>
         <div id="aiOrientationBusy" class="hidden absolute inset-0 bg-black/55 items-center justify-center text-white">
-          <div class="text-center"><i class="fa-solid fa-spinner fa-spin text-4xl"></i><div class="font-black mt-2">מסובב…</div></div>
+          <div class="text-center"><i class="fa-solid fa-spinner fa-spin text-4xl"></i><div class="font-black mt-2">מכין את התמונה…</div></div>
         </div>
       </div>
       <div class="shrink-0 bg-slate-900 px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/10">
@@ -256,7 +256,11 @@
           <button id="aiOrientationLeft" type="button" class="btn-tap py-3 rounded-xl bg-white/10 border border-white/15 text-white font-black"><i class="fa-solid fa-rotate-left ml-1"></i> סובב שמאלה</button>
           <button id="aiOrientationRight" type="button" class="btn-tap py-3 rounded-xl bg-white/10 border border-white/15 text-white font-black"><i class="fa-solid fa-rotate-right ml-1"></i> סובב ימינה</button>
         </div>
-        <button id="aiOrientationConfirm" type="button" class="btn-tap w-full py-3.5 rounded-xl bg-emerald-600 text-white font-black text-lg"><i class="fa-solid fa-check ml-1"></i> התמונה ישרה — המשך</button>
+        <div id="aiOrientationCropRow" class="grid grid-cols-2 gap-2 mb-2">
+          <button id="aiOrientationCrop" type="button" class="btn-tap py-2.5 rounded-xl bg-white/10 border border-white/15 text-white font-bold text-sm"><i class="fa-solid fa-crop-simple ml-1"></i> חתוך תמונה</button>
+          <button id="aiOrientationRestore" type="button" class="hidden btn-tap py-2.5 rounded-xl bg-white/10 border border-white/15 text-white font-bold text-sm">חזור לתמונה המקורית</button>
+        </div>
+        <button id="aiOrientationConfirm" type="button" class="btn-tap w-full py-3.5 rounded-xl bg-emerald-600 text-white font-black text-lg"><i class="fa-solid fa-check ml-1"></i> אשר תמונה מלאה</button>
         <p class="text-[11px] text-slate-400 font-bold text-center mt-2">התמונה לא תישלח ל-AI לפני האישור.</p>
       </div>
     </div>
@@ -3925,8 +3929,7 @@ function renderAppOrders() {
         '<div data-appmiss="1" class="space-y-1.5' + ((missing && missing.length) ? ' mt-1.5 pt-1.5 border-t border-rose-200' : '') + '">' + appMiss.map(appNotArrivedRowHtml).join('') + '</div>' +
         '<div class="text-[10px] font-bold text-rose-500 mt-2">לפי תעודות הקליטה שנקלטו אחרי ההזמנה. כמות חלקית נחשבת "הגיע".</div>' +
       '</div>'
-    : '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">' +
-        '<div class="text-xs font-black text-emerald-700"><i class="fa-solid fa-check"></i> הכל מההזמנה האחרונה הגיע</div></div>';
+    : '';
 
   app.innerHTML =
     '<div class="px-1 pt-1 pb-3">' +
@@ -8553,52 +8556,14 @@ async function aiRenderInvoiceRotation(sourceDataUrl, quarterTurns) {
   ctx.drawImage(img, -sourceWidth / 2, -sourceHeight / 2, sourceWidth, sourceHeight);
   return aiCanvasToInvoiceJpeg(canvas, 0.92);
 }
-// v141: לפני ההקטנה ל-3000px מזוהה מלבן הנייר על עותק מוקטן (1500px),
-// והחיתוך נעשה מהתמונה המקורית ברזולוציה מלאה — כך כל תקציב ה-3000px
-// הולך לשורות המוצרים במקום לרקע. אין זיהוי בטוח → אין חיתוך, והמסלול
-// נשאר זהה לחלוטין להתנהגות הקודמת. התוצאה מוצגת במסך אישור הכיוון.
+// Full-image capture is the default. Resize/enhance without removing edges;
+// cropping is an explicit choice in the review screen, with a way back to the original.
 async function aiCompressInvoiceImage(file) {
   const raw = await aiReadFile(file);
   const img = await aiLoadImage(raw);
   const sourceWidth = img.naturalWidth || img.width, sourceHeight = img.naturalHeight || img.height;
-  let cropRegion = null;
-  const cropInfo = { v: 177 }; // v177: דו"ח החיתוך שמוצג במסך אישור הכיוון
-  try {
-    const proxyScale = Math.min(1, 1500 / Math.max(sourceWidth, sourceHeight));
-    const proxyWidth = Math.max(1, Math.round(sourceWidth * proxyScale));
-    const proxyHeight = Math.max(1, Math.round(sourceHeight * proxyScale));
-    const proxyCanvas = document.createElement('canvas');
-    proxyCanvas.width = proxyWidth; proxyCanvas.height = proxyHeight;
-    const proxyCtx = proxyCanvas.getContext('2d', { alpha: false });
-    if (proxyCtx) {
-      proxyCtx.fillStyle = '#fff'; proxyCtx.fillRect(0, 0, proxyWidth, proxyHeight);
-      proxyCtx.drawImage(img, 0, 0, proxyWidth, proxyHeight);
-      const analysis = {};
-      const proxyPixels = proxyCtx.getImageData(0, 0, proxyWidth, proxyHeight);
-      // v146: עותק גולמי לעידון התת-אריחי — ההשטחה משנה את פיקסלי העותק
-      // במקום, והעידון חייב למדוד את הבהירות האמיתית שלפני ההלבנה.
-      const rawProxyPixels = new Uint8ClampedArray(proxyPixels.data);
-      aiFlattenIllumination(proxyPixels.data, proxyWidth, proxyHeight, analysis);
-      let box = aiComputePaperCropBox(analysis, proxyWidth, proxyHeight, cropInfo);
-      if (box) {
-        // v146: הידוק פיקסלי של כל צד, ועדכון האחוז המדווח בהתאם.
-        try { box = aiRefineCropEdges(rawProxyPixels, proxyWidth, proxyHeight, box, analysis); } catch (refineError) { /* מסגרת האריחים נשארת */ }
-        cropInfo.value = Math.round(100 * (1 - (box.width * box.height) / (proxyWidth * proxyHeight)));
-        const back = 1 / proxyScale;
-        const cropX = Math.max(0, Math.floor(box.x * back));
-        const cropY = Math.max(0, Math.floor(box.y * back));
-        const cropWidth = Math.min(sourceWidth - cropX, Math.ceil(box.width * back));
-        const cropHeight = Math.min(sourceHeight - cropY, Math.ceil(box.height * back));
-        if (cropWidth >= 64 && cropHeight >= 64) cropRegion = { x: cropX, y: cropY, width: cropWidth, height: cropHeight };
-        else cropInfo.reason = 'tiny';
-      }
-    }
-  } catch (cropError) {
-    cropRegion = null; // בלי חיתוך — ממשיכים כרגיל, אבל הסיבה מדוּוחת
-    cropInfo.reason = 'error';
-    cropInfo.value = String(cropError && cropError.message || cropError || '').slice(0, 60);
-  }
-  const region = cropRegion || { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
+  const cropInfo = { v: 178, reason: 'full_image' };
+  const region = { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
   // מסמכי ספק צפופים זקוקים ליותר פרטים. v134: עד 3000px (~250 DPI על A4) —
   // ‎~56% יותר פיקסלים לכל אות לעומת 2400px, ומורידים איכות רק אם חייבים.
   const maxSide = 3000;
@@ -8617,7 +8582,7 @@ async function aiCompressInvoiceImage(file) {
   const encoded = aiCanvasToInvoiceJpeg(canvas, 0.92);
   // v155: הקובץ המקורי והגיאומטריה נשמרים על העמוד, כדי שחיתוך ידני
   // יוכל לרוץ מהמקור הגולמי דרך כל הצינור — סטטיסטיקה נקייה, 3000px מלאים.
-  return { dataUrl: encoded.dataUrl, baseDataUrl: encoded.dataUrl, rotation: 0, orientationConfirmed: false, cropped: !!cropRegion, cropInfo: cropInfo, sourceBlob: file, sourceRegion: { x: region.x, y: region.y, width: region.width, height: region.height }, processScale: scale, name: file.name || ('עמוד-' + Date.now() + '.jpg'), bytes: encoded.bytes };
+  return { dataUrl: encoded.dataUrl, baseDataUrl: encoded.dataUrl, rotation: 0, orientationConfirmed: false, cropped: false, cropInfo: cropInfo, originalImage: { dataUrl: encoded.dataUrl, region: { ...region }, scale: scale, rotationOffset: 0 }, sourceBlob: file, sourceRegion: { x: region.x, y: region.y, width: region.width, height: region.height }, processScale: scale, name: file.name || ('עמוד-' + Date.now() + '.jpg'), bytes: encoded.bytes };
 }
 function aiOrientationLocation(page) {
   for (let docIndex = 0; docIndex < aiScanDocuments.length; docIndex++) {
@@ -8630,16 +8595,11 @@ function aiSetOrientationBusy(busy) {
   aiOrientationBusy = !!busy;
   const overlay = $('aiOrientationBusy');
   if (overlay) { overlay.classList.toggle('hidden', !busy); overlay.classList.toggle('flex', !!busy); }
-  ['aiOrientationLeft', 'aiOrientationRight', 'aiOrientationConfirm', 'aiOrientationCancel'].forEach(id => {
+  ['aiOrientationLeft', 'aiOrientationRight', 'aiOrientationConfirm', 'aiOrientationCancel', 'aiOrientationCrop', 'aiOrientationRestore'].forEach(id => {
     const button = $(id); if (button) button.disabled = !!busy;
   });
 }
-// ===== v157: מסגרת חיתוך בזרימה =====
-// לפי בקשת המשתמש: בלי מצב נפרד ובלי כפתורים נוספים. מסגרת החיתוך חיה
-// תמיד על מסך אישור הכיוון; מי שרוצה — גורר פינות, מי שלא — מאשר וזהו.
-// אם המסגרת הוזזה, האישור קודם מחיל את החיתוך מהמקור הגולמי דרך כל
-// הצינור (סטטיסטיקה נקייה, 3000px מלאים) ורק אז ממשיך. לא הוזזה —
-// האישור מתנהג בדיוק כמו תמיד, בלי עיבוד מיותר.
+// Explicit crop mode: a quick confirmation always keeps the full image.
 let aiCropState = null;
 function aiCropResetOverlay() {
   aiCropState = null;
@@ -8651,16 +8611,13 @@ function aiCropResetOverlay() {
   }
 }
 function aiCropInitFrame() {
-  if (!aiOrientationSession) { aiCropResetOverlay(); return; }
+  if (!aiOrientationSession || aiOrientationSession.reviewOnly || !aiOrientationSession.cropMode) { aiCropResetOverlay(); return; }
   const img = $('aiOrientationImage');
   if (!img || !img.naturalWidth || !img.naturalHeight) return;
-  const marginX = Math.round(img.naturalWidth * 0.03), marginY = Math.round(img.naturalHeight * 0.03);
   aiCropState = {
-    w: img.naturalWidth,
-    h: img.naturalHeight,
-    rect: { x: marginX, y: marginY, w: img.naturalWidth - 2 * marginX, h: img.naturalHeight - 2 * marginY },
-    moved: false,
-    drag: null,
+    w: img.naturalWidth, h: img.naturalHeight,
+    rect: { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight },
+    moved: false, drag: null,
   };
   const canvas = $('aiCropCanvas');
   if (canvas) canvas.classList.remove('hidden');
@@ -8819,7 +8776,12 @@ async function aiReprocessFromSource(page, originalRect) {
 // כל הצינור. לעמוד ללא מקור שמור — חיתוך על התמונה המעובדת המוצגת.
 async function aiApplyCropIfMoved(page) {
   const state = aiCropState;
-  if (!state || !state.moved) return false;
+  if (!aiOrientationSession || aiOrientationSession.reviewOnly || !aiOrientationSession.cropMode
+    || aiOrientationSession.page !== page || !state || !state.moved) return false;
+  if (!page.originalImage && !page.cropped) {
+    page.originalImage = { dataUrl: page.baseDataUrl || page.dataUrl,
+      region: page.sourceRegion ? { ...page.sourceRegion } : null, scale: page.processScale || null, rotationOffset: 0 };
+  }
   const r = state.rect;
   const removed = Math.round(100 * (1 - (r.w * r.h) / (state.w * state.h)));
   const turns = aiNormalizeQuarterTurns((Number(page.rotation) || 0) / 90);
@@ -8856,6 +8818,7 @@ async function aiApplyCropIfMoved(page) {
     const encoded = aiCanvasToInvoiceJpeg(canvas, 0.92);
     page.baseDataUrl = encoded.dataUrl;
     page.dataUrl = encoded.dataUrl;
+    if (page.originalImage) page.originalImage.rotationOffset = aiNormalizeQuarterTurns((page.originalImage.rotationOffset || 0) + turns);
     page.rotation = 0;
     page.bytes = encoded.bytes;
   }
@@ -8879,7 +8842,8 @@ async function aiApplyCropIfMoved(page) {
 // מסך אישור הכיוון. צילום מסך אחד עונה מה רץ ולמה, בלי סבבי ניחוש.
 function aiCropInfoText(page) {
   const info = page && page.cropInfo;
-  if (!info || !info.v) return 'גרסת עמוד ישנה';
+  if (!info || !info.v) return 'צילום שמור';
+  if (info.reason === 'full_image') return 'תמונה מלאה · ללא חיתוך';
   const version = 'v' + info.v;
   if (page.cropped) return version + ' · נחתך' + (info.value != null ? ' ' + info.value + '%' : '');
   if (info.reason === 'box_97') return version + ' · ללא חיתוך: המסגרת ' + (info.value != null ? info.value + '% ' : '') + 'מהתמונה';
@@ -8889,20 +8853,61 @@ function aiCropInfoText(page) {
   if (info.reason === 'error') return version + ' · ללא חיתוך: שגיאה — ' + (info.value || '');
   return version + ' · ללא חיתוך';
 }
+function aiUpdateOrientationControls() {
+  const session = aiOrientationSession; if (!session) return;
+  const reviewOnly = !!session.reviewOnly, cropMode = !!session.cropMode;
+  const title = $('aiOrientationTitle'), hint = $('aiOrientationHint'), crop = $('aiOrientationCrop'), restore = $('aiOrientationRestore'), confirm = $('aiOrientationConfirm');
+  if (title) title.textContent = reviewOnly ? 'צילום העמוד' : cropMode ? 'חיתוך התמונה' : 'בדיקת התמונה';
+  if (hint) hint.textContent = reviewOnly ? 'צפייה בתמונה ששימשה לפענוח.' : cropMode ? 'גרור את הפינות רק אם צריך. השאר את כל הטקסט והסיכומים בתוך המסגרת.' : session.page.cropped ? 'מוצגת תמונה חתוכה. אפשר לחזור לתמונה המקורית.' : 'התמונה נשמרת בשלמותה. ודא שהכותרת למעלה ושהטקסט ישר.';
+  ['aiOrientationCancel', 'aiOrientationRotateRow', 'aiOrientationCropRow'].forEach(id => { const node = $(id); if (node) node.classList.toggle('hidden', reviewOnly); });
+  if (crop) crop.innerHTML = cropMode ? 'בטל חיתוך' : '<i class="fa-solid fa-crop-simple ml-1"></i> חתוך תמונה';
+  const canRestore = !!((cropMode || session.page.cropped) && (session.page.originalImage || session.page.sourceBlob));
+  if (restore) restore.classList.toggle('hidden', !canRestore);
+  if (crop) crop.classList.toggle('col-span-2', !canRestore);
+  if (confirm) confirm.innerHTML = '<i class="fa-solid ' + (reviewOnly ? 'fa-xmark' : 'fa-check') + ' ml-1"></i> ' + (reviewOnly ? 'סגור וחזור לתוצאות' : cropMode ? 'אשר חיתוך והמשך' : session.page.cropped ? 'אשר תמונה חתוכה' : 'אשר תמונה מלאה');
+}
+function aiToggleCropMode() {
+  const session = aiOrientationSession;
+  if (!session || session.reviewOnly || aiOrientationBusy) return;
+  session.cropMode = !session.cropMode;
+  if (session.cropMode) aiCropInitFrame(); else aiCropResetOverlay();
+  aiUpdateOrientationControls();
+}
+async function aiRestoreOriginalImage() {
+  const session = aiOrientationSession, location = session && aiOrientationLocation(session.page);
+  if (!location || session.reviewOnly || aiOrientationBusy) return;
+  const page = location.page;
+  if (!page.cropped) {
+    session.cropMode = false; aiCropResetOverlay(); aiUpdateOrientationControls(); return;
+  }
+  if (!page.originalImage && !page.sourceBlob) return;
+  aiSetOrientationBusy(true);
+  try {
+    // New captures reuse the saved full image. Older in-memory pages can recover from the source file.
+    const original = page.originalImage || (await aiCompressInvoiceImage(page.sourceBlob)).originalImage;
+    const turns = aiNormalizeQuarterTurns((Number(page.rotation) || 0) / 90 + (original.rotationOffset || 0));
+    const rendered = await aiRenderInvoiceRotation(original.dataUrl, turns);
+    if (aiOrientationSession !== session || !aiOrientationLocation(page)) return;
+    page.originalImage = { ...original, rotationOffset: 0 };
+    page.baseDataUrl = original.dataUrl; page.dataUrl = rendered.dataUrl;
+    page.bytes = rendered.bytes; page.rotation = turns * 90;
+    page.sourceRegion = original.region ? { ...original.region } : null; page.processScale = original.scale;
+    page.cropped = false; page.cropInfo = { v: 178, reason: 'full_image' };
+    page.orientationConfirmed = false;
+    session.cropMode = false;
+    aiPaintOrientationReview();
+  } catch (error) {
+    showToast('לא ניתן לשחזר כרגע את התמונה המקורית. התמונה הנוכחית נשמרה — אפשר לנסות שוב.', null, null, 3500);
+  } finally { if (aiOrientationSession === session) aiSetOrientationBusy(false); }
+}
 function aiPaintOrientationReview() {
   aiCropResetOverlay();
   const location = aiOrientationSession && aiOrientationLocation(aiOrientationSession.page);
   if (!location) { aiCloseOrientationReview(); return false; }
-  const reviewOnly = !!(aiOrientationSession && aiOrientationSession.reviewOnly);
   const img = $('aiOrientationImage'), label = $('aiOrientationLabel');
   if (img) img.src = location.page.dataUrl;
   if (label) label.textContent = 'תעודה ' + (location.docIndex + 1) + ' · עמוד ' + (location.pageIndex + 1) + ((Number(location.page.rotation) || 0) ? ' · סיבוב ' + (Number(location.page.rotation) || 0) + '°' : '') + ' · ' + aiCropInfoText(location.page);
-  const title = $('aiOrientationTitle'), cancel = $('aiOrientationCancel'), left = $('aiOrientationLeft'), right = $('aiOrientationRight'), confirm = $('aiOrientationConfirm');
-  if (title) title.textContent = reviewOnly ? 'צילום העמוד המקורי' : 'בדיקת כיוון התעודה';
-  if (cancel) cancel.classList.toggle('hidden', reviewOnly);
-  if (left) left.classList.toggle('hidden', reviewOnly);
-  if (right) right.classList.toggle('hidden', reviewOnly);
-  if (confirm) confirm.innerHTML = reviewOnly ? '<i class="fa-solid fa-xmark ml-1"></i> סגור וחזור לתוצאות' : '<i class="fa-solid fa-check ml-1"></i> התמונה ישרה — המשך';
+  aiUpdateOrientationControls();
   return true;
 }
 function aiOpenOrientationReview(docIndex, pageIndex, requireReconfirm) {
@@ -8912,7 +8917,7 @@ function aiOpenOrientationReview(docIndex, pageIndex, requireReconfirm) {
   if (requireReconfirm) page.orientationConfirmed = false;
   // אחרי שכבר התקבלה תוצאה, פתיחה ללא דרישת אישור היא צפייה בלבד. היא לא
   // מאפשרת סיבוב/מחיקה ולא מאפסת את הפענוח שהמשתמש בודק כרגע.
-  aiOrientationSession = { page, reviewOnly: !requireReconfirm && !!aiScanResponse };
+  aiOrientationSession = { page, reviewOnly: !requireReconfirm && !!aiScanResponse, cropMode: false };
   const modal = $('aiOrientationModal');
   if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
   aiSetOrientationBusy(false);
@@ -8928,6 +8933,7 @@ function aiOpenNextUnconfirmedOrientation() {
   return false;
 }
 function aiCloseOrientationReview() {
+  aiCropResetOverlay();
   aiOrientationSession = null;
   aiOrientationBusy = false;
   const modal = $('aiOrientationModal');
@@ -8963,7 +8969,7 @@ async function aiConfirmOrientationReview() {
   if (!location || aiOrientationBusy) return;
   if (aiOrientationSession.reviewOnly) { aiCloseOrientationReview(); return; }
   // v157: אם מסגרת החיתוך הוזזה — קודם מחילים אותה מהמקור, ורק אז מאשרים.
-  if (aiCropState && aiCropState.moved) {
+  if (aiOrientationSession.cropMode && aiCropState && aiCropState.moved) {
     aiSetOrientationBusy(true);
     try {
       await aiApplyCropIfMoved(location.page);
@@ -17952,6 +17958,8 @@ $('scanClose').addEventListener('click', closeScanner);
 $('aiOrientationLeft').addEventListener('click', () => aiRotateOrientationReview(-1));
 $('aiOrientationRight').addEventListener('click', () => aiRotateOrientationReview(1));
 $('aiOrientationConfirm').addEventListener('click', aiConfirmOrientationReview);
+$('aiOrientationCrop').addEventListener('click', aiToggleCropMode);
+$('aiOrientationRestore').addEventListener('click', aiRestoreOriginalImage);
 $('aiOrientationCancel').addEventListener('click', aiCancelOrientationReview);
 $('toastBtn').addEventListener('click', doUndo);
 $('closeSend').addEventListener('click', hideSend);
