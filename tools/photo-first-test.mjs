@@ -13,7 +13,7 @@ function source(name) {
   assert.ok(end > firstEnd);
   return html.slice(match.index, end + 2);
 }
-const names = ['yotvataPaperCheck', 'yotvataResetPhotoReceipt', 'yotvataCachedDoc', 'yotvataPhotoReady',
+const names = ['receiptRememberScanResults','receiptRebuildScanResponse','receiptScanChanged','receiptScanSnapshot','receiptStorageNotice','persistReceiptDraft','receiptDraftActive','scheduleReceiptDraftSync','refreshReceiptDraftNotice','yotvataPaperCheck', 'yotvataResetPhotoReceipt', 'yotvataCachedDoc', 'yotvataPhotoReady',
   'yotvataInvalidatePhotoDoc', 'yotvataAdoptPaperAnchors', 'yotvataStartPaperScan', 'yotvataScanMetadata',
   'yotvataStoreScanResults', 'yotvataReceiptScanAudit', 'receiptDraftPayload', 'saveReceiptDraft',
   'restoreDraftScan', 'restoreReceiptDraft', 'normNote', 'noteSum', 'noteAnchorSum', 'recomputeNoteTotal',
@@ -24,6 +24,8 @@ function context(extra = {}) {
   const storage = new Map();
   const c = vm.createContext({ console, setTimeout, clearTimeout, AbortController, Date, JSON, Math, Number,
     Map, Set, Array, Object, String, Promise, Error,
+    db:null, receiptStorageWarning:'',receiptDraftId:null,makeOperationId:()=> 'test-' + Math.random(),receiptAnalysisCache:null,aiScanEditingImages:false,
+    receiptSync:{revision:0,dirty:false},receiptSyncSignature:null,receiptCloudReady:false,receiptSyncTimer:null,receiptSyncConflict:null,receiptSyncError:'',receiptFinalizing:false,
     receiptManualInput: null, $: () => null, htmlEscape: String, fmtMoney: String,
     receiptEntryMode: 'photo', receiptAnchorSource: null, receiptPaperScanState: '', receiptPaperScanProblems: [],
     receiptPhotoCaptureOpen: false, receiptScanHistory: [], aiScanRunId: 0, receiptOpened: false,
@@ -34,7 +36,7 @@ function context(extra = {}) {
     aiScanAttemptCount: 0, aiScanAutoRotationNote: '', reconcileData: null, currentView: 'receiving',
     AI_SCAN_MAX_AUTO_ROTATION_RETRIES: 2, AI_SCAN_NETWORK_RETRIES: 2, AI_SCAN_FETCH_TIMEOUT_MS: 2000,
     AI_SCAN_NETWORK_RETRY_DELAY_MS: 1, AI_SCAN_WORKER_URL: 'https://fixture.invalid/scan', RECEIPT_DRAFT_KEY: 'fixture',
-    products: [], auth: { currentUser: { getIdToken: async () => 'fixture' } },
+    receiptDraftNoticeHtml:()=>'',products: [], auth: { currentUser: { getIdToken: async () => 'fixture' } },
     localStorage: { getItem: k => storage.get(k) || null, setItem: (k, v) => storage.set(k, v) },
     r2: n => Math.round(n * 100) / 100, refreshScanHost() {}, renderReceiving() {}, showToast() {},
     openReceivingScanner() {}, yotvataEnsurePhotoService: async () => {}, aiOpenNextUnconfirmedOrientation() {}, aiReceivedProductIds: () => [],
