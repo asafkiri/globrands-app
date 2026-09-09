@@ -14188,6 +14188,75 @@ function manualOffsetEntry(groupId, own, other, amount, qty) {
 function manualOffsetSummary(entry) {
   return 'קיזוז ידני: ' + htmlEscape(entry.shortName || '') + ' ⇄ ' + htmlEscape(entry.overName || '') + ' · ₪' + fmtMoney(entry.amountEx || 0);
 }
+// ===== פירוט לפי תעודת ספק (יטבתה) =====
+// הנייר יודע איזו שורה שייכת לאיזו תעודה. הספירה הפיזית אינה יודעת — סורקים
+// מהמשטח, לא מהנייר — ולכן הכמות שנספרה מוקצית לתעודות לפי סדרן: תעודה 1
+// מתמלאת עד תום והחוסר נופל על האחרונה. זו הנחה, לא ידיעה, והיא מסומנת בכל
+// מוצר שמופיע ביותר מתעודה אחת. הפירוט הוא תצוגה בלבד: הוא אינו משנה את
+// התשלום, את הזיכויים, את הקיזוזים ואת מה שנשמר בתעודה.
+function receiptDocSplit(rc) {
+  const audit = rc && rc.priceAudit;
+  const parts = (Array.isArray(rc && rc.noteParts) ? rc.noteParts : []).filter(Boolean);
+  if (!audit || !Array.isArray(audit.rows) || !audit.rows.length || parts.length < 2) return null;
+  const docs = new Map();
+  const ensure = (index, number) => {
+    if (!docs.has(index)) docs.set(index, { index, number: number || null, rows: [], paperEx: 0, paperUnits: 0, assumed: false, noteAmount: null });
+    const d = docs.get(index); if (!d.number && number) d.number = number; return d;
+  };
+  (Array.isArray(audit.documents) ? audit.documents : []).forEach(d => ensure(d.index, d.number));
+  audit.rows.forEach(r => ensure(r.documentIndex, r.documentNumber));
+  if (docs.size < 2) return null;
+  // מוצר שיושב על יותר מתעודה אחת הוא היחיד שבו ההקצאה היא הנחה.
+  const spread = new Map();
+  audit.rows.forEach(r => { const id = String(r.productId || ''); if (!id) return;
+    const set = spread.get(id) || new Set(); set.add(r.documentIndex); spread.set(id, set); });
+  const counted = new Map();
+  (Array.isArray(rc.items) ? rc.items : []).forEach(it => {
+    const id = String(it.productId || ''); if (!id) return;
+    counted.set(id, r2((counted.get(id) || 0) + (Number(it.qty) || 0)));
+  });
+  const order = Array.from(docs.values()).sort((a, b) => a.index - b.index);
+  order.forEach(d => {
+    audit.rows.filter(r => r.documentIndex === d.index).forEach(r => {
+      const paperQty = Number(r.quantity) || 0;
+      const id = String(r.productId || '');
+      const left = id ? (counted.get(id) || 0) : 0;
+      const received = Math.min(left, paperQty);
+      if (id) counted.set(id, r2(left - received));
+      const unit = r.comparisonPrice != null ? r.comparisonPrice : r.originalUnitPrice;
+      const lineEx = unit != null ? r2(Number(unit) * paperQty) : null;
+      if (lineEx != null) d.paperEx = r2(d.paperEx + lineEx);
+      d.paperUnits += paperQty;
+      const spans = !!(id && spread.get(id) && spread.get(id).size > 1);
+      if (spans) d.assumed = true;
+      d.rows.push({ name: r.name || '', code: r.code || '', paperQty, received, unit: unit != null ? Number(unit) : null, page: r.page, line: r.line, spans, identified: !!id });
+    });
+  });
+  // סכום התעודה מוצג רק כששורת הסכומים תואמת אחד-לאחד את מספר התעודות.
+  if (parts.length === order.length) order.forEach((d, i) => { d.noteAmount = normNote(parts[i]).amount; });
+  return order.every(d => d.rows.length) ? order : null;
+}
+function receiptDocSplitHtml(rc) {
+  const docs = receiptDocSplit(rc);
+  if (!docs) return '';
+  return '<div class="mt-2 space-y-2">' +
+    '<div class="text-[11px] font-black text-slate-500 px-1"><i class="fa-solid fa-layer-group"></i> פירוט לפי תעודת ספק</div>' +
+    docs.map(d => '<div class="bg-white border-2 border-blue-200 rounded-xl p-2.5 text-xs">' +
+      '<div class="flex items-center justify-between gap-2 font-black text-blue-900">' +
+        '<span class="min-w-0 truncate"><i class="fa-solid fa-file-invoice"></i> תעודת ספק ' + htmlEscape(d.number || String(d.index + 1)) + '</span>' +
+        (d.noteAmount != null ? '<span class="shrink-0">₪' + fmtMoney(d.noteAmount) + '</span>' : '') +
+      '</div>' +
+      '<div class="text-[11px] text-slate-500 font-bold mt-0.5 mb-1">' + (d.rows.length === 1 ? 'שורה אחת' : d.rows.length + ' שורות') + ' · ' + d.paperUnits + ' יחידות בנייר · שווי שורות ₪' + fmtMoney(d.paperEx) + '</div>' +
+      d.rows.map(r => '<div class="flex items-center justify-between gap-2 py-1 border-t border-slate-100">' +
+          '<span class="min-w-0 truncate font-bold text-slate-700">' + htmlEscape(r.name) + (r.spans ? ' <span class="text-amber-600 font-black">*</span>' : '') + '</span>' +
+          '<span class="shrink-0 text-slate-600 font-bold">' + r.paperQty + ' בנייר · ' + r.received + ' נספרו' +
+            (r.unit != null ? ' · ₪' + fmtUnitPrice(r.unit, true) : '') + '</span>' +
+        '</div>').join('') +
+      (d.assumed ? '<div class="mt-1 pt-1 border-t border-amber-200 text-[11px] font-bold text-amber-700">* המוצר מופיע ביותר מתעודה אחת. הספירה אינה יודעת מאיזו תעודה הגיעה כל יחידה, ולכן שויכה לפי סדר התעודות — <b>שיוך משוער</b>.</div>' : '') +
+    '</div>').join('') +
+    '<div class="text-[11px] text-slate-500 font-bold px-1">הפירוט לפי הנייר. התשלום, הזיכויים והקיזוזים מחושבים על הקליטה כולה, כמו קודם.</div>' +
+  '</div>';
+}
 function receiptDiffRowHtml(rc, item, dir) {
   const side = { qty: Number(item.n) || 0, price: Number(item.price) || 0, value: lineTotalFromUnit(item.price, item.n) };
   const isShort = dir === 'short';
@@ -14753,6 +14822,7 @@ function renderReceiptsHistory() {
         '<div class="bg-slate-50 rounded-xl p-3 border border-slate-100">' + rows + '</div>' +
         '<div class="flex items-center justify-end mt-2 text-xs text-slate-500 font-bold px-1"><span>שווי שנסרק: ₪' + fmtMoney(rc.totalExVat) + ' · לתשלום: ₪' + fmtMoney(payableEx) + '</span></div>' +
         (rc.noteTotalInc != null ? '<div class="text-[11px] text-slate-500 font-bold mt-1 px-1"><i class="fa-solid fa-file-invoice"></i> ' + (rc.noteParts && rc.noteParts.length > 1 ? rc.noteParts.length + ' תעודות ספק: ' + rc.noteParts.map(x => '₪' + fmtMoney(normNote(x).amount)).join(' + ') + ' = ₪' + fmtMoney(rc.noteTotalInc) : 'תעודת ספק: ₪' + fmtMoney(rc.noteTotalInc)) + '</div>' : '') +
+        receiptDocSplitHtml(rc) +
         (di.awaitingDoc ? '<div class="mt-2 bg-amber-50 border-2 border-amber-300 rounded-xl p-3">' +
           '<div class="font-black text-amber-900 text-sm mb-1"><i class="fa-solid fa-file-circle-xmark"></i> נקלטה בלי תעודה</div>' +
           '<div class="text-[11px] font-bold text-amber-800 leading-relaxed mb-2">הסכום כאן מחושב מהמחירון לפי מה שנספר בפועל — אין נייר לאמת מולו, ולכן אי אפשר לתבוע מהספק חוסר או מחיר. כשהתעודה תגיע, הזן את נתוניה כאן והבדיקה הרגילה תרוץ מול הספירה הזאת.</div>' +
