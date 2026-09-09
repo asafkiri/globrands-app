@@ -206,3 +206,86 @@ test(supplier+': a declared shortage still stops on the comparison screen',async
  assert.equal(r.run('!!pendingReceipt'),false);
  assert.equal(r.run('currentView'),'reconcile');
 });
+
+const settleScan = async () => { for(let i=0;i<16;i++)await new Promise(resolve=>setImmediate(resolve)); };
+function enterPhotoScreen(r) {
+ r.run(`currentView='receiving';mainMode='receiving';receiptList=[];receiptOpened=false;
+ globalThis.cameraOpens=0;openReceivingScanner=()=>cameraOpens++;`);
+ if(supplier==='berman')r.run('bermanSeedPhotoFirstScan(1)');
+ else r.run('aiScanDocuments=[{noteIndex:0,amount:null,units:null,pages:[]}]');
+ r.run(`aiScanDocuments[0].pages=[{dataUrl:'data:image/jpeg;base64,Zml4dHVyZQ==',orientationConfirmed:true}];renderReceiving()`);
+}
+const photoRole = manual => supplier==='berman' ? (manual?'rc-open-photo-quantity':'rc-open-photo') : (manual?'rc-photo-quantity':'rc-photo-start');
+function assertManualScreen(r) {
+ const html=r.node('app').innerHTML;
+ assert.match(html,/data-manual-receiving/);
+ assert.doesNotMatch(html,/data-role="rc-scan"|data-role="rc-crates"|id="rcDigits"|id="rcListEl"|id="rcTotals"|אפשר לסרוק מוצרים|סרוק את הסחורה|אין פריטים עדיין/);
+ return html;
+}
+test(supplier+': the two photo buttons show distinct screens during and after the identical OCR request',async()=>{
+ const requests=[];
+ for(const manual of [false,true]) {
+  const r=create({data:plainData()});enterPhotoScreen(r);
+  let release;const pending=new Promise(resolve=>release=resolve),fetch=r.context.fetch;
+  r.context.fetch=async(url,options)=>{if(String(url).endsWith('/scan'))await pending;return fetch(url,options);};
+  r.click(photoRole(manual));await settleScan();
+  assert.equal(r.run('receiptPaperScanState'),'running');
+  if(manual){assertManualScreen(r);assert.equal(r.run('cameraOpens'),0);}
+  else{assert.doesNotMatch(r.node('app').innerHTML,/data-manual-receiving/);assert.match(r.node('app').innerHTML,/data-role="rc-scan"/);assert.equal(r.run('cameraOpens'),1);}
+  if(manual) {
+   const restored=create({data:plainData(),storage:r.storage});
+   restored.run("currentView='receiving';mainMode='receiving';renderReceiving()");
+   const recovery=assertManualScreen(restored);
+   assert.match(recovery,/צריך להשלים את פענוח התעודה/);
+   assert.doesNotMatch(recovery,/data-role="rc-quantity-all"/);
+   assert.equal(restored.requests.length,0);
+  }
+  release();await settleScan();
+  assert.equal(r.run('receiptPaperScanState'),'ok');assert.deepEqual(json(r,'receiptList'),[]);
+  if(manual){const html=assertManualScreen(r);assert.match(html,/data-role="rc-quantity-all"/);assert.match(html,/data-role="rc-quantity-differences"/);assert.match(html,/data-price-audit/);assert.doesNotMatch(html,/data-quantity-picker/);}
+  else assert.match(r.node('app').innerHTML,/data-role="rc-scan"/);
+  requests.push(r.requests.filter(x=>x.url.endsWith('/scan')).map(x=>JSON.parse(x.body)));
+ }
+ assert.equal(requests[0].length,1);assert.deepEqual(requests[1],requests[0]);
+});
+test(supplier+': manual screen and unfinished differences survive reload and returning from review',async()=>{
+ const data=plainData(),a=create({data});enterPhotoScreen(a);a.click(photoRole(true));await settleScan();
+ a.click('rc-quantity-differences');
+ a.run(`receiptQuantityReview.rows[0].kind='shortage';receiptQuantityReview.rows[0].difference='2';saveReceiptDraft();closeReceiptQuantityReview();renderReceiving()`);
+ assertManualScreen(a);
+ const b=create({data,storage:a.storage});b.run("currentView='receiving';mainMode='receiving';renderReceiving()");
+ assertManualScreen(b);assert.equal(b.run('receiptQuantityReview.rows[0].difference'),'2');assert.equal(b.requests.length,0);
+ b.click('rc-quantity-differences');b.run('receiptDupConfirmed=true;showConfirm=(a,b,c,fn)=>fn()');
+ assert.equal(b.run('commitReceiptQuantityReview()'),true);assert.equal(b.run('receiptList[0].qty'),8);
+ b.run("setView('receiving')");assertManualScreen(b);assert.equal(b.requests.length,0);
+});
+test(supplier+': manual scan failure and an interrupted reload offer photo recovery without a scanner screen',async()=>{
+ const data=plainData();data.paper={ok:false,error:'invalid_model_output'};
+ const a=create({data});enterPhotoScreen(a);a.click(photoRole(true));await settleScan();
+ assert.equal(a.run('receiptPaperScanState'),'failed');const html=assertManualScreen(a);
+ assert.match(html,/צריך להשלים את פענוח התעודה/);assert.doesNotMatch(html,/data-role="rc-quantity-all"/);
+ const repair=supplier==='berman'?'rc-paper-rescan':'rc-photo-repair';assert.ok(html.includes('data-role="'+repair+'"'));
+ const b=create({data,storage:a.storage});b.run("currentView='receiving';mainMode='receiving';renderReceiving()");
+ assertManualScreen(b);assert.ok(b.node('app').innerHTML.includes('data-role="'+repair+'"'));
+ b.click(repair);assert.ok(b.node('app').innerHTML.includes('data-role="'+photoRole(true)+'"'));
+});
+test(supplier+': switching back to scanning preserves the paper, entered differences and existing quantities',async()=>{
+ const r=await scanned(plainData(),[]);r.click('rc-quantity-differences');
+ r.run(`receiptQuantityReview.rows[0].kind='shortage';receiptQuantityReview.rows[0].difference='2';saveReceiptDraft();closeReceiptQuantityReview()`);
+ const paper=json(r,'aiScanResponse'),before=r.requests.length;
+ r.click('rc-count-by-scan');assert.equal(r.run('receiptCountingMode'),'scan');
+ assert.doesNotMatch(r.node('app').innerHTML,/data-manual-receiving/);assert.match(r.node('app').innerHTML,/data-role="rc-scan"/);
+ assert.deepEqual(json(r,'aiScanResponse'),paper);assert.equal(r.run('receiptQuantityReview.rows[0].difference'),'2');assert.deepEqual(json(r,'receiptList'),[]);
+ r.click('rc-quantity-differences');r.run('closeReceiptQuantityReview();renderReceiving()');assertManualScreen(r);
+ assert.equal(r.run('receiptQuantityReview.rows[0].difference'),'2');assert.equal(r.requests.length,before);
+});
+if(supplier!=='berman')test(supplier+': chosen manual screen follows the draft to another device before any count is entered',async()=>{
+ const cloud=harness.fakeCloud(),data=plainData(),a=create({data,cloud});await cloud.tick();enterPhotoScreen(a);
+ a.click(photoRole(true));await settleScan();assert.equal(await a.run('flushReceiptDraftToCloud()'),true);await cloud.tick();
+ const b=create({data,cloud});await cloud.tick();b.run('renderReceiving()');assertManualScreen(b);
+ assert.deepEqual(json(b,'receiptList'),[]);assert.equal(b.requests.length,0);
+});
+test(supplier+': cancelling the manual receipt resets the next receipt to the normal counting method',async()=>{
+ const r=create({data:plainData()});enterPhotoScreen(r);r.click(photoRole(true));await settleScan();
+ r.run('showConfirm=(a,b,c,fn)=>fn()');r.click('rc-cancel');assert.equal(r.run('receiptCountingMode'),'scan');assert.deepEqual(json(r,'receiptList'),[]);
+});

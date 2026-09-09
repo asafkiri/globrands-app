@@ -13,7 +13,7 @@ function source(name) {
   assert.ok(end > firstEnd);
   return html.slice(match.index, end + 2);
 }
-const names = ['priceAuditNumber','priceAuditDate','priceAuditCapture','priceAuditSource','priceAuditIdentity','priceAuditDocumentComplete','receiptPriceAudit','receiptPriceAuditHtml','priceAuditLegacyVisible','refreshPriceScannerNotice','receiptRememberScanResults','receiptRebuildScanResponse','receiptScanChanged','receiptScanSnapshot','receiptStorageNotice','persistReceiptDraft','receiptDraftActive','scheduleReceiptDraftSync','refreshReceiptDraftNotice','yotvataPaperCheck', 'yotvataResetPhotoReceipt', 'yotvataCachedDoc', 'yotvataPhotoReady',
+const names = ['receiptUsesManualQuantities','priceAuditNumber','priceAuditDate','priceAuditCapture','priceAuditSource','priceAuditIdentity','priceAuditDocumentComplete','receiptPriceAudit','receiptPriceAuditHtml','priceAuditLegacyVisible','refreshPriceScannerNotice','receiptRememberScanResults','receiptRebuildScanResponse','receiptScanChanged','receiptScanSnapshot','receiptStorageNotice','persistReceiptDraft','receiptDraftActive','scheduleReceiptDraftSync','refreshReceiptDraftNotice','yotvataPaperCheck', 'yotvataResetPhotoReceipt', 'yotvataCachedDoc', 'yotvataPhotoReady',
   'yotvataInvalidatePhotoDoc', 'yotvataAdoptPaperAnchors', 'yotvataStartPaperScan', 'yotvataScanMetadata',
   'yotvataStoreScanResults', 'yotvataReceiptScanAudit', 'receiptDraftPayload', 'saveReceiptDraft',
   'restoreDraftScan', 'restoreReceiptDraft', 'normNote', 'noteSum', 'noteAnchorSum', 'recomputeNoteTotal',
@@ -26,7 +26,7 @@ function context(extra = {}) {
     Map, Set, Array, Object, String, Promise, Error, PRICE_AUDIT_SUPPLIER: 'yotvata', receiptPriceSaveFailed:false,
     db:null, receiptStorageWarning:'',receiptDraftId:null,makeOperationId:()=> 'test-' + Math.random(),receiptAnalysisCache:null,aiScanEditingImages:false,
     receiptSync:{revision:0,dirty:false},receiptSyncSignature:null,receiptCloudReady:false,receiptSyncTimer:null,receiptSyncConflict:null,receiptSyncError:'',receiptFinalizing:false,
-    receiptQuantityReview: null, receiptManualInput: null, $: () => null, htmlEscape: String, fmtMoney: String,
+    receiptCountingMode: 'scan', receiptQuantityReview: null, receiptManualInput: null, $: () => null, htmlEscape: String, fmtMoney: String,
     receiptEntryMode: 'photo', receiptAnchorSource: null, receiptPaperScanState: '', receiptPaperScanProblems: [],
     receiptPhotoCaptureOpen: false, receiptScanHistory: [], aiScanRunId: 0, receiptOpened: false,
     receiptNotes: [], receiptNoteTotal: null, receiptNoteUnits: null, receiptList: [], receiptDepositWaived: false,
