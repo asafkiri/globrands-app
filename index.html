@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v338 אישור כמויות ידני</title>
+    <title>הזמנות יטבתה - v342 בדיקת כמויות ידנית</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v338 אישור כמויות ידני</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v342 בדיקת כמויות ידנית</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -614,6 +614,7 @@ let appOrderCache = null;         // אינדקס הסימונים הפעילי�
 
 // ===== מצב קליטת תעודות =====
 let receiptDraftId = null;
+let receiptCountingMode = 'scan'; // 'scan' | 'manual'; saved with this receipt draft
 let receiptQuantityReview = null;
 // Which way the manual-quantity choice was left folded. It is a screen
 // preference only; nothing about the receipt itself depends on it.
@@ -1044,7 +1045,7 @@ function yotvataResetPhotoReceipt() {
 function refreshScanHost() {
   refreshPriceScannerNotice();
   if (currentView === 'receiving') {
-    if (!receiptOpened || receiptPhotoCaptureOpen) renderReceiving();
+    if (receiptUsesManualQuantities() || !receiptOpened || receiptPhotoCaptureOpen) renderReceiving();
     else {
       const status = $('rcPaperStatus');
       if (status) status.innerHTML = yotvataPaperStatusHtml();
@@ -1147,6 +1148,7 @@ async function yotvataEnsurePhotoService() {
 async function yotvataStartPaperScan(opts = {}) {
   if (!yotvataPhotoReady()) return;
   if (!auth || !auth.currentUser) { showToast('המתן לחיבור המאובטח ונסה שוב', null, null, 3000); return; }
+  receiptCountingMode = opts.manualQuantities && !receiptAttachTarget ? 'manual' : 'scan';
   receiptEntryMode = 'photo'; receiptNoDoc = false; receiptOpened = true;
   receiptAnchorSource = null; receiptNotes = []; recomputeNoteTotal();
   receiptPhotoCaptureOpen = false; receiptPaperScanState = 'running'; receiptPaperScanProblems = [];
@@ -1200,7 +1202,7 @@ function switchReceiptEntryMode(mode) {
   receiptEntryMode = mode;
   receiptPhotoCaptureOpen = mode === 'photo';
   editingNotes = mode === 'manual' && receiptOpened;
-  if (mode === 'manual') receiptAnchorSource = 'manual';
+  if (mode === 'manual') { receiptAnchorSource = 'manual'; receiptCountingMode = 'scan'; }
   saveReceiptDraft(); renderReceiving();
 }
 function receiptBackToPhotosHtml() {
@@ -1283,7 +1285,7 @@ function receiptDraftPayload(includeScan) {
     dw: typeof receiptDepositWaived === 'undefined' ? false : receiptDepositWaived,
     uw: typeof receiptUnitsWaived === 'undefined' ? false : receiptUnitsWaived,
     noDoc: receiptNoDoc, attach: receiptAttachTarget, entryMode: receiptEntryMode, anchorSource: receiptAnchorSource,
-    quantityReview: receiptQuantityReview, manualInput: receiptManualInput, photoCaptureOpen: receiptPhotoCaptureOpen,
+    countingMode: receiptCountingMode, quantityReview: receiptQuantityReview, manualInput: receiptManualInput, photoCaptureOpen: receiptPhotoCaptureOpen,
     paperState: receiptPaperScanState, paperProblems: receiptPaperScanProblems, scanHistory: receiptScanHistory,
     photoInputs: aiScanDocuments.map(d => ({ scanId: d.scanId, amount: d.amount, units: d.units, lines: d.lines,
       pageCount: d.pages.length || d.restoredPageCount || 0 })),
@@ -1429,9 +1431,10 @@ function restoreReceiptDraft(incoming) {
   try {
     const s = incoming ? null : localStorage.getItem(RECEIPT_DRAFT_KEY); if (!s && !incoming) return;
     const o = incoming || JSON.parse(s);
-    if (Array.isArray(o)) { receiptList = o; receiptOpened = o.length > 0; }
+    if (Array.isArray(o)) { receiptCountingMode = 'scan'; receiptList = o; receiptOpened = o.length > 0; }
     else if (o && typeof o === 'object') {
       receiptList = Array.isArray(o.items) ? o.items : [];
+      receiptCountingMode = o.countingMode === 'manual' ? 'manual' : 'scan';
       receiptQuantityReview = o.quantityReview && Array.isArray(o.quantityReview.rows) ? o.quantityReview : null;
       receiptNotes = (Array.isArray(o.notes) ? o.notes : (o.noteTotal != null ? [o.noteTotal] : [])).map(normNote);
       receiptOpened = !!o.opened || receiptList.length > 0;
@@ -6867,8 +6870,30 @@ function receiptQuantityPaperRows() {
     return rows.every(r => Number.isSafeInteger(r.paperQty) && r.paperQty > 0) ? rows : null;
   } finally { reconcileData = previous; }
 }
+// The chosen counting method is independent of how the paper anchors were entered.
+function receiptUsesManualQuantities() {
+  return receiptCountingMode === 'manual' && !receiptNoDoc && !receiptAttachTarget;
+}
+function receiptManualReceivingHtml() {
+  const running = aiScanBusy || receiptPaperScanState === 'running';
+  const ready = !running && receiptPaperScanState === 'ok' && !!aiScanResponse;
+  const problems = receiptPaperScanProblems.length ? receiptPaperScanProblems : [aiScanError || 'הפענוח לא הושלם. בדוק את צילומי התעודה כדי להמשיך.'];
+  const status = running
+    ? '<div role="status" class="rounded-xl bg-blue-50 border border-blue-200 p-4 mb-3 text-base font-bold text-blue-800"><i class="fa-solid fa-circle-notch fa-spin"></i> ' + htmlEscape(aiScanProgressText || 'מפענח את התעודה…') + '<div class="mt-2 text-sm">בסיום הפענוח אפשר לאשר את הכמויות או לדווח על חוסרים ועודפים.</div></div>'
+    : ready ? ''
+    : '<div role="status" class="rounded-xl bg-amber-50 border border-amber-300 p-4 mb-3 text-base font-bold text-amber-900">צריך להשלים את פענוח התעודה<div class="mt-2 text-sm">' + problems.map(htmlEscape).join('<br>') + '</div><button data-role="rc-photo-repair" class="btn-tap w-full bg-white border border-amber-300 rounded-xl py-3 mt-3">בדוק את צילומי התעודה</button></div>';
+  return '<section data-manual-receiving dir="rtl" class="mb-4">' +
+    '<h2 class="font-black text-xl text-slate-800 mb-3">בדיקת כמויות ידנית</h2>' +
+    '<div id="rcPaperStatus">' + status + '</div>' +
+    '<div id="rcQuantityOptions">' + receiptQuantityButtonsHtml() + '</div>' +
+    (!running ? '<div id="rcPriceAudit">' + receiptPriceAuditHtml() + '</div>' : '') +
+    '<button data-role="rc-count-by-scan" class="btn-tap w-full py-3 text-sm font-bold text-slate-600 underline">מעבר לקליטה בסריקת מוצרים</button></section>';
+}
 function receiptQuantityButtonsHtml() {
   if (receiptNoDoc || receiptAttachTarget || receiptPaperScanState !== 'ok' || !aiScanResponse) return '';
+  if (receiptUsesManualQuantities()) return '<div class="space-y-3 mb-3">' +
+    '<button data-role="rc-quantity-all" class="btn-tap w-full bg-emerald-600 text-white rounded-xl py-4 px-3 font-black text-base">בדקתי ידנית — כל הכמויות תואמות, המשך לקליטה</button>' +
+    '<button data-role="rc-quantity-differences" class="btn-tap w-full bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-4 px-3 font-black text-base">בדקתי ידנית — יש חוסרים או עודפים</button></div>';
   // Folded to its own question. Counting by scanner is the ordinary path, so the
   // manual shortcut asks for one line of the screen until it is actually wanted.
   return '<details data-quantity-picker' + (receiptQuantityPickerOpen ? ' open' : '') +
@@ -6890,6 +6915,7 @@ function startReceiptQuantityReview(allMatch) {
     return;
   }
   const begin = () => {
+    receiptCountingMode = 'manual'; saveReceiptDraft(); renderReceiving();
     const key = receiptQuantityPaperKey(), itemsKey = JSON.stringify(receiptList);
     if (!allMatch && receiptQuantityReview && receiptQuantityReview.key === key && receiptQuantityReview.itemsKey === itemsKey
       && receiptQuantityReview.paperRows === receiptQuantityRowsSignature(paperRows)) {
@@ -7031,6 +7057,10 @@ function renderReceiving() {
         '<div class="flex items-center gap-2 min-w-0"><i class="fa-solid fa-file-invoice text-blue-600"></i><div class="min-w-0"><div id="rcNoteSummaryLabel" class="text-[11px] text-slate-400 font-bold">' + receiptNoteHeaderLabel() + '</div><div id="rcNoteSummaryValue" class="font-black text-slate-800">' + receiptNoteHeaderValue() + '</div></div></div>' +
         '<div class="flex items-center gap-1.5 shrink-0"><button data-role="rc-notes-edit" class="btn-tap text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-pen"></i> ערוך</button><button data-role="rc-cancel" class="btn-tap text-xs font-bold text-red-500 bg-red-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-xmark"></i></button></div>' +
       '</div>';
+  if (receiptUsesManualQuantities()) {
+    app.innerHTML = '<div id="rcDraftStatus">' + receiptDraftNoticeHtml() + '</div>' + banner + pendingReturnsBannerHtml() + noteBar + receiptManualReceivingHtml();
+    return;
+  }
   const progress = receivingProgressHtml(t);
   app.innerHTML = '<div id="rcDraftStatus">' + receiptDraftNoticeHtml() + '</div>' + banner + pendingReturnsBannerHtml() + topButtons + '<div id="rcPaperStatus">' + yotvataPaperStatusHtml() + '</div>' + '<div id="rcPriceAudit">' + receiptPriceAuditHtml() + '</div>' + noteBar + '<div id="rcQuantityOptions">' + receiptQuantityButtonsHtml() + '</div>' + progress +
     '<button data-role="rc-scan" class="btn-tap w-full bg-blue-600 text-white rounded-2xl py-4 font-black text-lg flex items-center justify-center gap-3 shadow-lg mb-2"><i class="fa-solid fa-barcode text-2xl"></i> סרוק פריט לתעודה</button>' +
@@ -13991,7 +14021,7 @@ function reopenReceiptForDoc(id) {
 }
 function cancelReceiptAttach() {
   yotvataResetPhotoReceipt();
-  receiptList = []; receiptQuantityReview = null; receiptNotes = []; recomputeNoteTotal();
+  receiptList = []; receiptQuantityReview = null; receiptCountingMode = 'scan'; receiptNotes = []; recomputeNoteTotal();
   receiptAttachTarget = null; receiptNoDoc = false; receiptOpened = false; editingNotes = false;
   anchorFixHint = ''; reconcileData = null;
   receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false;
@@ -14034,7 +14064,7 @@ async function confirmReceipt() {
   hideReceiptSummary();
   aiCloseOrientationReview();
   yotvataResetPhotoReceipt();
-  receiptDraftId = null; receiptList = []; receiptQuantityReview = null; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; saveReceiptDraft();
+  receiptDraftId = null; receiptList = []; receiptQuantityReview = null; receiptCountingMode = 'scan'; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; saveReceiptDraft();
   receiptSyncCompleted(receiptDraftGuard);
   setView('receiptsHistory');
   const autoApplied = await autoApplyExactOffsets(); // v249: זוג מדויק מתקזז לבד
@@ -19177,6 +19207,7 @@ app.addEventListener('click', (e) => {
   if (unitBtn) { toggleUnit(unitBtn.dataset.id, unitBtn); buzz(8); return; }
   const t = e.target.closest('[data-role]'); if (!t) return;
   const role = t.dataset.role, id = t.dataset.id;
+  if (role === 'rc-count-by-scan') { receiptCountingMode = 'scan'; closeReceiptQuantityReview(); saveReceiptDraft(); renderReceiving(); return; }
   if (role === 'rc-quantity-all' || role === 'rc-quantity-differences') { startReceiptQuantityReview(role === 'rc-quantity-all'); return; }
   // The browser folds the element itself; this only remembers it for the next render.
   if (role === 'rc-quantity-toggle') { receiptQuantityPickerOpen = !receiptQuantityPickerOpen; return; }
@@ -19346,11 +19377,11 @@ app.addEventListener('click', (e) => {
   else if (role === 'clear-history') showConfirm('ניקוי היסטוריה', 'למחוק את כל היסטוריית ההזמנות? יישמר גיבוי בסל מחזור.', 'מחק הכל', () => clearAllDocs('history'));
   else if (role === 'clear-returns-history') showConfirm('ניקוי היסטוריה', 'למחוק את כל היסטוריית החזרות? יישמר גיבוי בסל מחזור.', 'מחק הכל', () => clearAllDocs('returns'));
   else if (role === 'rc-scan') openReceivingScanner();
-  else if (role === 'rc-open') { receiptEntryMode = 'manual'; receiptAnchorSource = 'manual'; const en = readNoteEntry(receiptNotes.length === 0); if (en === false) return; if (en) receiptNotes.push(en); recomputeNoteTotal(); receiptOpened = true; receiptDupConfirmed = false; receiptDepositWaived = false; saveReceiptDraft(); refreshReceipt(); if (!receiptAttachTarget) openReceivingScanner(); }
+  else if (role === 'rc-open') { receiptCountingMode = 'scan'; receiptEntryMode = 'manual'; receiptAnchorSource = 'manual'; const en = readNoteEntry(receiptNotes.length === 0); if (en === false) return; if (en) receiptNotes.push(en); recomputeNoteTotal(); receiptOpened = true; receiptDupConfirmed = false; receiptDepositWaived = false; saveReceiptDraft(); refreshReceipt(); if (!receiptAttachTarget) openReceivingScanner(); }
   // v272: ביטול תעודה חייב למחוק גם את הצילומים ואת קריאת הנייר. כל עוד כל
   // כניסה למסך ההשוואה איפסה אותם ממילא, הדילוג כאן לא הזיק; מרגע שהם שורדים
   // בין המסכים, תעודה שבוטלה הייתה יכולה להוריש את הנייר שלה לתעודה הבאה.
-  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { yotvataResetPhotoReceipt(); receiptDraftId = null; receiptList = []; receiptQuantityReview = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
+  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { yotvataResetPhotoReceipt(); receiptDraftId = null; receiptList = []; receiptQuantityReview = null; receiptCountingMode = 'scan'; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
   else if (role === 'rc-note-add') {
     // v274: הפעולה עוטפת את עצמה, כדי שאישור ההצהרה על חוסר סך יחידות
     // יוסיף את התעודה במקום להשאיר את העובד מול שדות מלאים שלא נקלטו.
