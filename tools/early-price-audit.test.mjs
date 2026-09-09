@@ -220,3 +220,43 @@ test(supplier+': carton promotion requires an explicit unit conversion',async()=
  assert.equal(report(c).rows[0].result,'match');c.run('promos[0].cartonSize=null;renderReceiving()');
  assert.equal(report(c).rows[0].capability,'partial');assert.match(view(c),/חסר מספר יחידות בארגז/);assert.equal(requests(c),1);
 });
+
+// A verdict the review reached replaces the old alert; a row it could not check
+// is not a verdict. Hiding the finding behind such a row dropped a real price
+// warning and put nothing in its place.
+test(supplier+': a row the review cannot check keeps the existing price warning',async()=>{
+ const data=fixture({unit:6}),c=create(data);await scan(c,data);
+ assert.equal(report(c).rows[0].result,'difference');
+ assert.equal(c.run("priceAuditLegacyVisible({type:'price',productId:'milk'})"),false);
+ c.run("products[0].price=0;products[0].listPrice=0;renderReceiving()");
+ assert.equal(report(c).rows[0].capability,'missing_catalog_price');assert.equal(report(c).rows[0].result,null);
+ assert.equal(c.run("priceAuditLegacyVisible({type:'price',productId:'milk'})"),true);
+ assert.match(c.run("aiActionableFindingsHtml([{type:'price',productId:'milk',name:'מוצר בדיקה',text:'מחיר שונה: מוצר בדיקה'}])"),/מחיר שונה/);
+ assert.equal(requests(c),1);
+});
+// The banner used to vanish for every product the moment the review produced a
+// single row, including products the review never looked at.
+test(supplier+': the promotion-mismatch banner is filtered per product, not switched off',async()=>{
+ const data=fixture({unit:6}),c=create(data);await scan(c,data);
+ const mismatch=[{productId:'milk',name:'מוצר בדיקה'},{productId:'coffee',name:'מוצר שני'}];
+ const banner=()=>{c.run('presentReconcileSummary([],0,false,'+JSON.stringify({supplierPromoMismatchItems:mismatch})+')');
+  return (c.node('rsBody').innerHTML.match(/מבצע שמוגדר במערכת לא הופיע[\s\S]*?<\/div><\/div>/)||[''])[0];};
+ const judged=banner();assert.match(judged,/מוצר שני/);assert.doesNotMatch(judged,/מוצר בדיקה/);
+ c.run("products[0].price=0;products[0].listPrice=0;renderReceiving()");
+ assert.equal(report(c).rows[0].capability,'missing_catalog_price');
+ assert.match(banner(),/מוצר בדיקה/);assert.equal(requests(c),1);
+});
+// The promotion ran on the day the document was issued and expired since. Judged
+// by today, the expected price is rebuilt on a promotion that was not in force —
+// and the credit demanded from the supplier is built on that price.
+test(supplier+': an expired promotion is judged by the document date in both engines',async()=>{
+ const day=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10),docDay=day(-40);
+ const data=fixture({unit:5,date:docDay,promo:{start:day(-60),end:day(-30)}}),c=create(data);await scan(c,data);
+ assert.equal(report(c).documents[0].date,docDay);assert.equal(c.run('priceAuditPromoDay()'),docDay);
+ assert.equal(c.run('promoActive(promos[0],priceAuditPromoDay())'),true);
+ assert.equal(c.run('promoActive(promos[0],activeReceiptDate())'),false);
+ const priced=JSON.parse(c.run('JSON.stringify(aiEvaluateInvoiceScan(aiScanResponse).findings||[])')).filter(f=>f.productId==='milk'&&f.expectedPrice!=null);
+ assert.ok(priced.length,'the comparison engine has to price the document');
+ priced.forEach(f=>assert.equal(f.expectedPrice,4));
+ assert.equal(requests(c),1);
+});
