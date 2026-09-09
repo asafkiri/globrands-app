@@ -115,7 +115,9 @@ if(supplier==='yotvata'){
   assert.equal(report(c).documents[0].dateAssumed,true);
   assert.match(html,/משוער/);
   assert.match(html,/תאריך התעודה לא נקרא בפענוח/);
-  // An assumed date must never be hidden behind a collapsed summary.
+  // An assumed date must never be hidden behind a collapsed summary: it is the
+  // summary line itself, so only the explanation and the field fold away.
+  assert.match(html,/<summary[^>]*>(?:(?!<\/summary>)[\s\S])*תאריך משוער/);
   assert.doesNotMatch(html,/<summary[^>]*>תאריך התעודה: /);
   // Supplying the real date clears the assumption and every marker with it.
   await c.events.get('app:change')({target:{dataset:{role:'price-doc-date',doc:'0'},value:'2026-09-09'}});
