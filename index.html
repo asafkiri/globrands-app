@@ -15093,6 +15093,31 @@ function compareSupplierStatement() {
 // v267: רשימת כל התעודות שנכנסו לדוח — סכום לכל תעודה, נפתחת בלחיצה
 // מתחת לסיכום החשבון. הסכומים כאן ללא מע״מ, בדיוק כפי שהם נכנסים לחישוב:
 // לתעודת קליטה הסכום לתשלום (אחרי הורדת חוסר פתוח), לתעודת חזרה סכום הזיכוי.
+// v335: במרכזת יטבתה מסמנים תעודה-תעודה. קליטה שנקלטה מכמה תעודות ספק
+// הוצגה כאן בסכום אחד מאוחד, ואי אפשר היה להצליב אותה מול החשבון החודשי.
+// הסכום לכל תעודה כבר שמור מדויק ב-noteParts (ביטבתה הכל ללא מע״מ), ולכן
+// זו הצגה של נתון קיים ולא חלוקה משוערת: receiptPayableBaseEx הוא בדיוק
+// סכום החלקים פחות החוסר הפתוח. החוסר נשאר ברמת הקליטה — הוא התביעה שלנו,
+// לא מספר שמופיע בנייר של הספק — ולכן אינו מחולק בין התעודות.
+function receiptStatementDocAmountsHtml(rc) {
+  const parts = (Array.isArray(rc && rc.noteParts) ? rc.noteParts : []).filter(Boolean).map(normNote);
+  if (parts.length < 2) return '';
+  const numbers = new Map();
+  const audit = rc && rc.priceAudit;
+  if (audit && Array.isArray(audit.documents)) audit.documents.forEach(x => {
+    if (x && x.number != null && x.number !== '') numbers.set(Number(x.index), String(x.number));
+  });
+  const short = Number((receiptDiscrepancyInfo(rc) || {}).shortValRaw) || 0;
+  return '<div class="mt-1 mr-3 pr-2 border-r-2 border-blue-200">' +
+    parts.map((part, i) => '<div class="flex items-center justify-between gap-2 py-0.5">' +
+      '<span class="text-[11px] font-bold text-slate-500 min-w-0 truncate">תעודת ספק ' +
+        (numbers.has(i) ? htmlEscape(numbers.get(i)) : String(i + 1)) + '</span>' +
+      '<span class="text-[11px] font-black text-slate-700 shrink-0">₪' + fmtMoney(part.amount) + '</span>' +
+    '</div>').join('') +
+    '<div class="text-[10px] text-slate-400 font-bold mt-0.5">סכומי הנייר לכל תעודה' +
+      (short > 0 ? ' · החוסר הפתוח (₪' + fmtMoney(short) + ') יורד מהקליטה כולה, לא מתעודה מסוימת' : '') + '</div>' +
+  '</div>';
+}
 function receiptRangeDocsListHtml(d) {
   const rows = []
     .concat((d.recs || []).map(r => ({ ts: Number(r.timestamp) || 0, kind: 'receipt', r })))
@@ -15111,9 +15136,12 @@ function receiptRangeDocsListHtml(d) {
       else if ((di.shortItems || []).length && di.shortFullyCredited) st = ' · <span class="text-emerald-700 font-black">חוסר נסגר בזיכוי</span>';
       const paper = x.r.noteTotalInc != null && Math.round(Math.abs((Number(x.r.noteTotalInc) || 0) - pay) * 100) > 0
         ? '<div class="text-[10px] text-slate-400 font-bold">תעודת ספק ₪' + fmtMoney(x.r.noteTotalInc) + '</div>' : '';
-      return '<div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0">' +
-        '<div class="min-w-0"><div class="text-sm font-bold text-slate-800 truncate"><i class="fa-solid fa-file-invoice text-blue-600"></i> קליטה · ' + day + '</div><div class="text-[11px] text-slate-500">' + n + ' פריטים' + (x.r.noteParts && x.r.noteParts.length > 1 ? ' · ' + x.r.noteParts.length + ' תעודות ספק' : '') + st + '</div></div>' +
-        '<div class="text-left shrink-0"><div class="text-sm font-black text-slate-800">₪' + fmtMoney(pay) + '</div>' + paper + '</div>' +
+      return '<div class="py-1.5 border-b border-slate-100 last:border-0">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          '<div class="min-w-0"><div class="text-sm font-bold text-slate-800 truncate"><i class="fa-solid fa-file-invoice text-blue-600"></i> קליטה · ' + day + '</div><div class="text-[11px] text-slate-500">' + n + ' פריטים' + (x.r.noteParts && x.r.noteParts.length > 1 ? ' · ' + x.r.noteParts.length + ' תעודות ספק' : '') + st + '</div></div>' +
+          '<div class="text-left shrink-0"><div class="text-sm font-black text-slate-800">₪' + fmtMoney(pay) + '</div>' + paper + '</div>' +
+        '</div>' +
+        receiptStatementDocAmountsHtml(x.r) +
       '</div>';
     }
     const rt = returnTotals(x.r);
