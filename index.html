@@ -615,6 +615,9 @@ let appOrderCache = null;         // אינדקס הסימונים הפעילי�
 // ===== מצב קליטת תעודות =====
 let receiptDraftId = null;
 let receiptQuantityReview = null;
+// Which way the manual-quantity choice was left folded. It is a screen
+// preference only; nothing about the receipt itself depends on it.
+let receiptQuantityPickerOpen = false;
 let receiptList = [];            // שורות התעודה הנוכחית: {productId,name,barcode,qty}
 let receipts = [];               // היסטוריית תעודות
 const legacyOffsetMigrationBusy = new Set(); // זוגות קיזוז ישנים שנמצאים כעת בשחזור
@@ -6866,11 +6869,15 @@ function receiptQuantityPaperRows() {
 }
 function receiptQuantityButtonsHtml() {
   if (receiptNoDoc || receiptAttachTarget || receiptPaperScanState !== 'ok' || !aiScanResponse) return '';
-  return '<div class="bg-white border border-slate-200 rounded-xl p-2 mb-2">' +
-    '<div class="text-[11px] font-bold text-slate-500 mb-1.5">בדקת ידנית את הכמויות מול התעודה?</div>' +
-    '<div class="flex gap-2">' +
+  // Folded to its own question. Counting by scanner is the ordinary path, so the
+  // manual shortcut asks for one line of the screen until it is actually wanted.
+  return '<details data-quantity-picker' + (receiptQuantityPickerOpen ? ' open' : '') +
+    ' class="bg-white border border-slate-200 rounded-xl p-2 mb-2">' +
+    '<summary data-role="rc-quantity-toggle" class="flex items-center justify-between gap-2 cursor-pointer text-xs font-black text-slate-700">' +
+    '<span>בדקת ידנית את הכמויות מול התעודה?</span><i class="fa-solid fa-chevron-down hist-chevron shrink-0"></i></summary>' +
+    '<div class="flex gap-2 mt-2">' +
     '<button data-role="rc-quantity-all" class="btn-tap flex-1 bg-emerald-600 text-white rounded-xl py-2.5 font-black text-sm">כל הכמויות תואמות</button>' +
-    '<button data-role="rc-quantity-differences" class="btn-tap flex-1 bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-2.5 font-black text-sm">יש חוסרים או עודפים</button></div></div>';
+    '<button data-role="rc-quantity-differences" class="btn-tap flex-1 bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-2.5 font-black text-sm">יש חוסרים או עודפים</button></div></details>';
 }
 function receiptQuantityRowsSignature(rows) {
   return JSON.stringify(rows.map(r => [r.productId, r.paperQty]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
@@ -19158,6 +19165,8 @@ app.addEventListener('click', (e) => {
   const t = e.target.closest('[data-role]'); if (!t) return;
   const role = t.dataset.role, id = t.dataset.id;
   if (role === 'rc-quantity-all' || role === 'rc-quantity-differences') { startReceiptQuantityReview(role === 'rc-quantity-all'); return; }
+  // The browser folds the element itself; this only remembers it for the next render.
+  if (role === 'rc-quantity-toggle') { receiptQuantityPickerOpen = !receiptQuantityPickerOpen; return; }
   // v235: ניתוח מוצרים — כל הפעולות כאן הן תצוגה בלבד
   if (role === 'an-preset') {
     const p = t.dataset.preset || 'd30';

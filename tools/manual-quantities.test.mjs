@@ -160,3 +160,24 @@ if(supplier==='berman')test('berman: existing promotion-on-paper handling is ret
  row.kind=d<0?'shortage':d>0?'surplus':'match';row.difference=String(Math.abs(d));});commitReceiptQuantityReview()`);closeNormal(manual);
  assert.deepEqual(finance(manual),finance(normal));
 });
+
+// Counting with the scanner is the ordinary path, so the manual shortcut asks for
+// one line of the receiving screen until it is wanted — and stays where the user
+// left it when the background scan refreshes the screen underneath.
+test(supplier+': the manual quantity choice is folded and remembers how it was left',async()=>{
+ const r=await scanned();
+ assert.match(r.run('receiptQuantityButtonsHtml()'),/<details data-quantity-picker class=/);
+ r.click('rc-quantity-toggle');
+ assert.equal(r.run('receiptQuantityPickerOpen'),true);
+ assert.match(r.run('receiptQuantityButtonsHtml()'),/<details data-quantity-picker open class=/);
+ r.run('refreshScanHost()');
+ // Berman rebuilds the whole screen where the others patch the host in place.
+ assert.match(r.node('rcQuantityOptions').innerHTML || r.node('app').innerHTML,/<details data-quantity-picker open class=/);
+ r.click('rc-quantity-toggle');
+ assert.match(r.run('receiptQuantityButtonsHtml()'),/<details data-quantity-picker class=/);
+ // Folding changes nothing about the choice itself.
+ assert.ok(r.run('receiptQuantityButtonsHtml().includes("rc-quantity-all")'));
+ assert.ok(r.run('receiptQuantityButtonsHtml().includes("rc-quantity-differences")'));
+ r.click('rc-quantity-differences');
+ assert.ok(r.run('!!receiptQuantityReview'));
+});
