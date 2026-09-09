@@ -260,3 +260,20 @@ test(supplier+': an expired promotion is judged by the document date in both eng
  priced.forEach(f=>assert.equal(f.expectedPrice,4));
  assert.equal(requests(c),1);
 });
+
+// The receiving screen opened with a full page of notices before the first
+// product could be scanned. A review with nothing to act on folds into its own
+// summary line; a priced gap, or a row that could not be checked, stays open.
+test(supplier+': a clean review folds into one line and a finding keeps it open',async()=>{
+ const clean=fixture({unit:5}),c=create(clean);const quiet=await scan(c,clean);
+ assert.match(quiet,/<details data-price-panel>/);
+ assert.match(quiet,/המחירים שנבדקו תואמים/);
+ assert.match(quiet,new RegExp('<summary[^>]*>(?:(?!</summary>)[\\s\\S])*'+report(c).rows.length+' שורות'));
+ const gapData=fixture({unit:6}),g=create(gapData);const gap=await scan(g,gapData);
+ assert.match(gap,/<details data-price-panel open>/);
+ assert.match(gap,/המחיר בתעודה שונה מהמחיר שבמאגר/);
+ g.run("products[0].price=0;products[0].listPrice=0;renderReceiving()");
+ assert.equal(report(g).rows[0].capability,'missing_catalog_price');
+ assert.match(view(g),/<details data-price-panel open>/);
+ assert.equal(requests(c),1);assert.equal(requests(g),1);
+});
