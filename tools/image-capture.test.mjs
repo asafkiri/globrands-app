@@ -37,7 +37,7 @@ function context() {
     nodes.set(id, n); return n;
   }
   const c = vm.createContext({ console, Number, Math, Array, Object, String, Promise,
-    aiOrientationSession: null, aiOrientationBusy: false, aiCropState: null, aiScanBusy: false,
+    aiScanEditingImages:false,receiptScanChanged(){},aiOrientationSession: null, aiOrientationBusy: false, aiCropState: null, aiScanBusy: false,
     aiScanDocuments: [], aiScanResponse: null, aiScanEvaluation: null, aiScanError: '',
     aiScanAutoRotationNote: '', aiScanAttemptCount: 0,
     $: node, setTimeout() {}, refreshScanHost() {}, aiOpenNextUnconfirmedOrientation() {},
