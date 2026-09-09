@@ -6975,6 +6975,13 @@ function commitReceiptQuantityReview() {
   reconcileData = null; pendingReceipt = null;
   saveReceiptDraft(); closeReceiptQuantityReview();
   renderReceiving(); finishReceipt();
+  // The quantities were just confirmed by hand. If the comparison then has
+  // nothing left to decide, the "everything matches — continue" screen asks the
+  // same question a second time, so it is answered here. A shortage, a surplus,
+  // an unread line, an unknown product or a price/promotion gap still stops
+  // there and waits for a person.
+  if (currentView === 'reconcile' && aiScanAllGood(aiScanEvaluation)
+    && !receiptPriceAudit().rows.some(row => row.result === 'difference')) aiApplyInvoiceResult();
   return true;
 }
 
@@ -12053,6 +12060,13 @@ function aiFindingHtml(f) {
   const icon = f.type === 'shortage' ? '🔴' : (f.type === 'surplus' ? '🟠' : (f.type === 'promo_missing' ? '🏷️' : 'ℹ️'));
   return '<div class="rounded-xl border p-2.5 text-sm font-black ' + cls + '">' + icon + ' ' + htmlEscape(f.text || '') + '</div>';
 }
+function aiScanAllGood(ev) {
+  if (!ev || ev.valid !== true) return false;
+  const findings = (Array.isArray(ev.findings) ? ev.findings : []).filter(aiIsActionableFinding);
+  const residuals = Array.isArray(ev.residuals) ? ev.residuals : [];
+  const unknown = (Array.isArray(ev.barcodeSuggestions) ? ev.barcodeSuggestions : []).filter(s => s && s.unknownProduct === true);
+  return findings.length === 0 && residuals.length === 0 && unknown.length === 0;
+}
 function aiIsActionableFinding(finding) {
   return !!finding && ['shortage', 'surplus', 'price', 'promo_missing'].includes(String(finding.type || ''));
 }
@@ -12451,7 +12465,6 @@ function aiInvoiceCaptureHtml() {
     const actionableFindings = (Array.isArray(ev.findings) ? ev.findings : []).filter(aiIsActionableFinding);
     const residuals = Array.isArray(ev.residuals) ? ev.residuals : [];
     const unknownCards = (Array.isArray(ev.barcodeSuggestions) ? ev.barcodeSuggestions : []).filter(suggestion => suggestion && suggestion.unknownProduct === true).map(aiUnknownProductSuggestionHtml).join('');
-    const hasProblems = actionableFindings.length > 0 || residuals.length > 0 || !!unknownCards;
     const confirmed = ev.userConfirmedFindings === true;
     const blockingReasonsHtml = (Array.isArray(ev.errors) ? ev.errors : []).slice(0, 6).map(error => '<li>' + htmlEscape(error) + '</li>').join('');
     // v133: שורת שארית אינה קופסה טכנית נפרדת אלא שורת בעיה רגילה ברשימה.
@@ -12466,7 +12479,7 @@ function aiInvoiceCaptureHtml() {
     // שבו הוא הכי נחוץ (רק שאריות, או רק שגיאות). עכשיו הוא תמיד מוצג.
     const analyzerLed = ev.analyzerLed === true && aiAnalyzeResult && aiAnalyzeResult.accepted === true;
     const findingsHtml = (!analyzerLed && actionableFindings.length ? aiActionableFindingsHtml(actionableFindings) : '') + residualLines + unknownCards + aiAnalyzeHtml(ev) + aiScanDiagnosticsHtml(ev);
-    const allGood = ev.valid && !hasProblems;
+    const allGood = aiScanAllGood(ev);
     const statusHtml = allGood
       ? '<div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 font-black text-emerald-800"><i class="fa-solid fa-circle-check ml-1"></i>הכול תואם — לא נמצאו חוסר, עודף או בעיית מחיר/מבצע.</div>'
       : (ev.valid ? '' :
