@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>הזמנות יטבתה - v330 שמירת פענוח תעודה</title>
+    <title>הזמנות יטבתה - v337 אישור כמויות ידני</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -123,7 +123,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v330 שמירת פענוח תעודה</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v337 אישור כמויות ידני</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -313,6 +313,17 @@
           <button id="rs_cancel" class="btn-tap flex-1 py-3 rounded-xl font-black bg-slate-100 text-slate-600">חזרה</button>
           <button id="rs_ok" class="btn-tap flex-1 py-3 rounded-xl font-black bg-green-600 text-white flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> אשר וקלוט</button>
         </div>
+      </div>
+    </div>
+
+    <div id="receiptQuantityModal" role="dialog" aria-modal="true" aria-label="בדיקת כמויות ידנית" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-3 z-[70]" dir="rtl">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style="max-height:90vh;max-height:90dvh">
+        <div class="p-4 border-b border-slate-100 shrink-0"><div class="flex items-center justify-between gap-2"><h3 class="font-black text-xl text-slate-800">חוסרים ועודפים</h3><button id="receiptQuantityClose" class="btn-tap p-2 text-slate-600 font-bold" aria-label="סגור בדיקת כמויות">חזרה</button></div>
+          <p class="text-sm text-slate-600 mt-2">סמן רק את ההפרשים שמצאת. בסיום תאשר ששאר הכמויות תואמות.</p>
+          <input id="receiptQuantitySearch" type="search" placeholder="חפש מוצר, גם אם אינו בתעודה" aria-label="חיפוש מוצר בבדיקה הידנית" class="w-full border-2 border-slate-200 rounded-xl p-3 mt-3 text-base">
+        </div>
+        <div class="p-4 overflow-y-auto min-h-0"><div id="receiptQuantityRows"></div><div id="receiptQuantityExtras"></div></div>
+        <div class="p-4 border-t border-slate-100 shrink-0"><button id="receiptQuantityConfirm" class="btn-tap w-full bg-blue-600 text-white rounded-xl py-3 font-black text-base">אשר הפרשים — שאר הכמויות תואמות</button></div>
       </div>
     </div>
 
@@ -603,6 +614,7 @@ let appOrderCache = null;         // אינדקס הסימונים הפעילי�
 
 // ===== מצב קליטת תעודות =====
 let receiptDraftId = null;
+let receiptQuantityReview = null;
 let receiptList = [];            // שורות התעודה הנוכחית: {productId,name,barcode,qty}
 let receipts = [];               // היסטוריית תעודות
 const legacyOffsetMigrationBusy = new Set(); // זוגות קיזוז ישנים שנמצאים כעת בשחזור
@@ -1034,6 +1046,7 @@ function refreshScanHost() {
       const status = $('rcPaperStatus');
       if (status) status.innerHTML = yotvataPaperStatusHtml();
       const priceHost = $('rcPriceAudit'); if (priceHost) priceHost.innerHTML = receiptPriceAuditHtml();
+      const qtyHost = $('rcQuantityOptions'); if (qtyHost) qtyHost.innerHTML = receiptQuantityButtonsHtml();
       refreshReceiptTotals();
     }
   } else if (currentView === 'reconcile') renderReconcile();
@@ -1081,6 +1094,7 @@ function yotvataPhotoGateHtml() {
     (aiScanBusy ? '<div class="p-4 font-black text-blue-700">מכין את הצילום…</div>' : cards) +
     (!aiScanBusy && aiScanDocuments.length < 4 ? '<button data-role="rc-photo-add-doc" class="btn-tap w-full py-3 mt-2 border border-slate-300 rounded-xl text-slate-700 font-bold">+ תעודה נוספת מהנהג / הספק</button>' : '') +
     '<button data-role="rc-photo-start" ' + (ready ? '' : 'disabled') + ' class="btn-tap w-full py-4 mt-4 rounded-2xl font-black text-lg ' + (ready ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400') + '">התחל קליטת מוצרים</button>' +
+    '<button data-role="rc-photo-quantity" ' + (ready ? '' : 'disabled') + ' class="btn-tap w-full py-3 mt-2 bg-white border-2 border-emerald-300 text-emerald-800 rounded-xl font-black text-base">פענח תעודה — הכמויות נבדקות ידנית</button>' +
     '<button data-role="rc-photo-manual" ' + (aiScanBusy ? 'disabled' : '') + ' class="btn-tap w-full py-3 text-sm font-bold text-slate-500">הקלדת סכום ויחידות ידנית</button>' + receivingNoDocGateHtml() + '</div>';
 }
 function yotvataPaperStatusHtml() {
@@ -1127,7 +1141,7 @@ async function yotvataEnsurePhotoService() {
     if (Number(status.serviceVersion) < 145 || status.photoFirst !== true) throw new Error('שירות הצילום בתחילת הקליטה עדיין לא עודכן. אפשר להזין את הסיכום ידנית.');
   } finally { clearTimeout(timer); }
 }
-async function yotvataStartPaperScan() {
+async function yotvataStartPaperScan(opts = {}) {
   if (!yotvataPhotoReady()) return;
   if (!auth || !auth.currentUser) { showToast('המתן לחיבור המאובטח ונסה שוב', null, null, 3000); return; }
   receiptEntryMode = 'photo'; receiptNoDoc = false; receiptOpened = true;
@@ -1138,7 +1152,7 @@ async function yotvataStartPaperScan() {
   // Do not await OCR before opening the physical barcode scanner.
   const run = aiRunInvoiceScan({ background: true });
   const runId = aiScanRunId;
-  if (!receiptAttachTarget) openReceivingScanner();
+  if (!receiptAttachTarget && !opts.manualQuantities) openReceivingScanner();
   await run;
   if (runId !== aiScanRunId || receiptEntryMode !== 'photo') return;
   yotvataAdoptPaperAnchors();
@@ -1266,7 +1280,7 @@ function receiptDraftPayload(includeScan) {
     dw: typeof receiptDepositWaived === 'undefined' ? false : receiptDepositWaived,
     uw: typeof receiptUnitsWaived === 'undefined' ? false : receiptUnitsWaived,
     noDoc: receiptNoDoc, attach: receiptAttachTarget, entryMode: receiptEntryMode, anchorSource: receiptAnchorSource,
-    manualInput: receiptManualInput, photoCaptureOpen: receiptPhotoCaptureOpen,
+    quantityReview: receiptQuantityReview, manualInput: receiptManualInput, photoCaptureOpen: receiptPhotoCaptureOpen,
     paperState: receiptPaperScanState, paperProblems: receiptPaperScanProblems, scanHistory: receiptScanHistory,
     photoInputs: aiScanDocuments.map(d => ({ scanId: d.scanId, amount: d.amount, units: d.units, lines: d.lines,
       pageCount: d.pages.length || d.restoredPageCount || 0 })),
@@ -1407,12 +1421,15 @@ function restoreDraftScan(saved) {
   return docs.length > 0;
 }
 function restoreReceiptDraft(incoming) {
+  const reviewModal = $('receiptQuantityModal');
+  if (incoming && reviewModal && !reviewModal.classList.contains('hidden')) closeReceiptQuantityReview();
   try {
     const s = incoming ? null : localStorage.getItem(RECEIPT_DRAFT_KEY); if (!s && !incoming) return;
     const o = incoming || JSON.parse(s);
     if (Array.isArray(o)) { receiptList = o; receiptOpened = o.length > 0; }
     else if (o && typeof o === 'object') {
       receiptList = Array.isArray(o.items) ? o.items : [];
+      receiptQuantityReview = o.quantityReview && Array.isArray(o.quantityReview.rows) ? o.quantityReview : null;
       receiptNotes = (Array.isArray(o.notes) ? o.notes : (o.noteTotal != null ? [o.noteTotal] : [])).map(normNote);
       receiptOpened = !!o.opened || receiptList.length > 0;
       receiptDepositWaived = !!o.dw; // v232
@@ -6826,6 +6843,133 @@ function receivingAttachBannerHtml() {
     '<button data-role="rc-attach-cancel" class="btn-tap w-full mt-2 bg-white border border-amber-300 text-amber-800 rounded-xl py-2 font-black text-xs">בטל צירוף — התעודה תישאר ממתינה לנייר</button>' +
   '</div>';
 }
+// Manual checking supplies only the physical quantities. The paper, pricing,
+// discrepancy calculation and final save still use the normal receiving flow.
+function receiptQuantityPaperKey() {
+  const raw = JSON.stringify([receiptDraftId, receiptNotes.map(normNote), aiScanResponse && aiScanResponse.scan]);
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++) hash = Math.imul(hash ^ raw.charCodeAt(i), 16777619);
+  return raw.length + ':' + (hash >>> 0);
+}
+function receiptQuantityPaperRows() {
+  if (receiptNoDoc || receiptAttachTarget || receiptPaperScanState !== 'ok' || aiScanBusy || !aiScanResponse || !aiScanDocuments.every(yotvataCachedDoc)) return null;
+  // Do not let quantities copied from the paper prove an ambiguous OCR match.
+  const previous = reconcileData;
+  try {
+    reconcileData = [];
+    const ev = aiEvaluateInvoiceScan(aiScanResponse);
+    if (!ev.basketComplete || !ev.allRowsMapped || !ev.totalVerified || !ev.unitsVerified || !ev.aggregates.size) return null;
+    const rows = Array.from(ev.aggregates.values()).map(a => ({ productId: a.product.id, name: a.product.name,
+      barcode: a.product.barcode || '', paperQty: Number(a.qty) }));
+    return rows.every(r => Number.isSafeInteger(r.paperQty) && r.paperQty > 0) ? rows : null;
+  } finally { reconcileData = previous; }
+}
+function receiptQuantityButtonsHtml() {
+  if (receiptNoDoc || receiptAttachTarget || receiptPaperScanState !== 'ok' || !aiScanResponse) return '';
+  return '<div class="bg-white border border-slate-200 rounded-2xl p-3 mb-3">' +
+    '<div class="font-black text-slate-800 text-base mb-2">כבר בדקת את הכמויות מול התעודה?</div>' +
+    '<button data-role="rc-quantity-all" class="btn-tap w-full bg-emerald-600 text-white rounded-xl py-3 font-black text-base">בדקתי ידנית — כל הכמויות תואמות</button>' +
+    '<button data-role="rc-quantity-differences" class="btn-tap w-full bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-3 mt-2 font-black text-base">בדקתי ידנית — יש חוסרים או עודפים</button></div>';
+}
+function receiptQuantityRowsSignature(rows) {
+  return JSON.stringify(rows.map(r => [r.productId, r.paperQty]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+}
+function startReceiptQuantityReview(allMatch) {
+  const paperRows = receiptQuantityPaperRows();
+  if (!paperRows) {
+    showToast('צריך להשלים את זיהוי המוצרים ובדיקת הפענוח לפני אישור הכמויות', null, null, 4500);
+    if (aiScanResponse && !aiScanBusy && receiptPaperScanState === 'ok') openReconcile();
+    return;
+  }
+  const begin = () => {
+    const key = receiptQuantityPaperKey(), itemsKey = JSON.stringify(receiptList);
+    if (!allMatch && receiptQuantityReview && receiptQuantityReview.key === key && receiptQuantityReview.itemsKey === itemsKey
+      && receiptQuantityReview.paperRows === receiptQuantityRowsSignature(paperRows)) {
+      renderReceiptQuantityReview(); return;
+    }
+    const rows = paperRows.map(row => {
+      const counted = !allMatch && receiptList.find(l => l.productId === row.productId);
+      const diff = counted ? Number(counted.qty) - row.paperQty : 0;
+      return { ...row, kind: diff < 0 ? 'shortage' : diff > 0 ? 'surplus' : 'match', difference: String(Math.abs(diff)) };
+    });
+    if (!allMatch) receiptList.filter(l => !paperRows.some(r => r.productId === l.productId)).forEach(l => {
+      rows.push({ productId: l.productId, name: l.name, barcode: l.barcode || '', paperQty: 0, kind: 'surplus', difference: String(l.qty) });
+    });
+    receiptQuantityReview = { key, itemsKey, paperRows: receiptQuantityRowsSignature(paperRows), rows, confirmedAt: null };
+    saveReceiptDraft();
+    if (allMatch) commitReceiptQuantityReview(); else renderReceiptQuantityReview();
+  };
+  if (allMatch && receiptList.length) showConfirm('אישור כל הכמויות', 'הכמויות שכבר הוזנו יוחלפו בכמויות שבתעודה, כולל ביטול חוסרים ועודפים שסומנו. בדקת שכולן תואמות?', 'כן, כל הכמויות תואמות', begin);
+  else begin();
+}
+function receiptQuantityActual(row) {
+  if (row.kind === 'match') return row.paperQty;
+  const text = String(row.difference).trim();
+  const n = /^\d+$/.test(text) ? Number(text) : NaN;
+  if (!Number.isSafeInteger(n) || n <= 0 || !['shortage', 'surplus'].includes(row.kind)) return null;
+  const actual = row.paperQty + (row.kind === 'shortage' ? -n : n);
+  return Number.isSafeInteger(actual) && actual >= 0 ? actual : null;
+}
+function receiptQuantityRowSummary(row) {
+  const actual = receiptQuantityActual(row);
+  return actual == null ? 'הזן מספר יחידות תקין. החוסר לא יכול להיות גדול מהכמות בתעודה.'
+    : 'בתעודה: ' + row.paperQty + ' · התקבלו: ' + actual + (actual === row.paperQty ? ' · תואם' : ' · ' + (actual < row.paperQty ? 'חוסר: ' : 'עודף: ') + Math.abs(actual - row.paperQty));
+}
+function renderReceiptQuantityReview() {
+  if (!receiptQuantityReview) return;
+  $('receiptQuantitySearch').value = '';
+  renderReceiptQuantityRows('');
+  const m = $('receiptQuantityModal'); m.classList.remove('hidden'); m.classList.add('flex');
+  $('receiptQuantitySearch').focus();
+}
+function renderReceiptQuantityRows(term) {
+  if (!receiptQuantityReview) return;
+  const query = String(term || '').trim().toLowerCase();
+  const matches = r => !query || [r.name, r.barcode, r.code, r.sku, r.supplierItemCode].some(v => String(v || '').toLowerCase().includes(query));
+  const rows = receiptQuantityReview.rows;
+  $('receiptQuantityRows').innerHTML = rows.map((row, i) => {
+    if (!matches({ ...products.find(p => p.id === row.productId), ...row })) return '';
+    const actual = receiptQuantityActual(row);
+    return '<div class="border border-slate-200 rounded-xl p-3 mb-2">' +
+      '<div class="font-black text-base text-slate-800">' + htmlEscape(row.name) + '</div>' +
+      '<div id="quantityReviewSummary_' + i + '" class="text-sm font-bold mt-1 ' + (actual === row.paperQty ? 'text-slate-600' : 'text-amber-800') + '" aria-live="polite">' + receiptQuantityRowSummary(row) + '</div>' +
+      '<div class="flex gap-2 mt-2"><select data-quantity-kind="' + i + '" aria-label="מצב הכמות של ' + htmlEscape(row.name) + '" class="min-w-0 flex-1 border-2 border-slate-200 rounded-lg p-2 text-base font-bold">' +
+      ['match', 'shortage', 'surplus'].filter(kind => row.paperQty > 0 || kind === 'surplus').map(kind => '<option value="' + kind + '"' + (row.kind === kind ? ' selected' : '') + '>' + ({match:'תואם',shortage:'חוסר',surplus:'עודף'}[kind]) + '</option>').join('') + '</select>' +
+      (row.kind !== 'match' ? '<label class="text-sm font-bold text-slate-600">כמה יחידות ' + (row.kind === 'shortage' ? 'חסרות' : 'עודפות') + '?<input data-quantity-difference="' + i + '" type="text" inputmode="numeric" value="' + htmlEscape(row.difference) + '" class="block w-24 border-2 border-slate-200 rounded-lg p-2 text-base text-center" aria-label="מספר היחידות ' + (row.kind === 'shortage' ? 'החסרות' : 'העודפות') + ' של ' + htmlEscape(row.name) + '"></label>' : '') +
+      (row.paperQty === 0 ? '<button data-quantity-remove="' + i + '" class="btn-tap text-rose-700 font-bold px-2" aria-label="הסר עודף של ' + htmlEscape(row.name) + '">הסר</button>' : '') + '</div></div>';
+  }).join('');
+  const extra = query ? products.filter(p => !rows.some(r => r.productId === p.id) && matches(p)).slice(0, 20) : [];
+  $('receiptQuantityExtras').innerHTML = extra.length ? '<div class="font-bold text-sm mt-3 mb-2">מוצרים שאינם בתעודה — הוספת עודף</div>' + extra.map(p =>
+    '<button data-quantity-add="' + htmlEscape(p.id) + '" class="btn-tap block w-full border border-amber-300 text-amber-900 rounded-xl p-3 mb-2 text-right text-base font-bold">+ ' + htmlEscape(p.name) + '</button>').join('') : '';
+}
+function closeReceiptQuantityReview() {
+  const m = $('receiptQuantityModal'); m.classList.add('hidden'); m.classList.remove('flex');
+}
+function receiptQuantityCheckAudit() {
+  const r = receiptQuantityReview;
+  if (!r || !r.confirmedAt || r.key !== receiptQuantityPaperKey() || r.itemsKey !== JSON.stringify(receiptList)) return null;
+  return { method: 'manual', confirmedAt: r.confirmedAt, differences: r.rows.filter(row => row.kind !== 'match').map(row =>
+    ({ productId: row.productId, paperQty: row.paperQty, received: receiptQuantityActual(row) })) };
+}
+function commitReceiptQuantityReview() {
+  const r = receiptQuantityReview, paperRows = receiptQuantityPaperRows();
+  if (!r || !paperRows || r.key !== receiptQuantityPaperKey() || r.itemsKey !== JSON.stringify(receiptList)
+    || r.paperRows !== receiptQuantityRowsSignature(paperRows)) {
+    showToast('התעודה או הכמויות השתנו. פתח שוב את הבדיקה הידנית לפני האישור.', null, null, 4500);
+    closeReceiptQuantityReview(); return false;
+  }
+  if (r.rows.some(row => receiptQuantityActual(row) == null || !products.some(p => p.id === row.productId))) {
+    showToast('בדוק את מספר היחידות בחוסרים ובעודפים לפני האישור', null, null, 4000); return false;
+  }
+  // Replacement, never addition: repeating the action cannot double quantities.
+  receiptList = r.rows.map(row => ({ productId: row.productId, name: row.name, barcode: row.barcode, qty: receiptQuantityActual(row) }));
+  r.confirmedAt = Date.now(); r.itemsKey = JSON.stringify(receiptList);
+  reconcileData = null; pendingReceipt = null;
+  saveReceiptDraft(); closeReceiptQuantityReview();
+  renderReceiving(); finishReceipt();
+  return true;
+}
+
 function renderReceiving() {
   refreshPriceScannerNotice();
   const t = receiptTotals();
@@ -6873,7 +7017,7 @@ function renderReceiving() {
         '<div class="flex items-center gap-1.5 shrink-0"><button data-role="rc-notes-edit" class="btn-tap text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-pen"></i> ערוך</button><button data-role="rc-cancel" class="btn-tap text-xs font-bold text-red-500 bg-red-50 px-2.5 py-2 rounded-lg"><i class="fa-solid fa-xmark"></i></button></div>' +
       '</div>';
   const progress = receivingProgressHtml(t);
-  app.innerHTML = '<div id="rcDraftStatus">' + receiptDraftNoticeHtml() + '</div>' + banner + pendingReturnsBannerHtml() + topButtons + '<div id="rcPaperStatus">' + yotvataPaperStatusHtml() + '</div>' + '<div id="rcPriceAudit">' + receiptPriceAuditHtml() + '</div>' + noteBar + progress +
+  app.innerHTML = '<div id="rcDraftStatus">' + receiptDraftNoticeHtml() + '</div>' + banner + pendingReturnsBannerHtml() + topButtons + '<div id="rcPaperStatus">' + yotvataPaperStatusHtml() + '</div>' + '<div id="rcPriceAudit">' + receiptPriceAuditHtml() + '</div>' + noteBar + '<div id="rcQuantityOptions">' + receiptQuantityButtonsHtml() + '</div>' + progress +
     '<button data-role="rc-scan" class="btn-tap w-full bg-blue-600 text-white rounded-2xl py-4 font-black text-lg flex items-center justify-center gap-3 shadow-lg mb-2"><i class="fa-solid fa-barcode text-2xl"></i> סרוק פריט לתעודה</button>' +
     '<details class="bg-white rounded-2xl border border-slate-200 shadow-sm mb-4"><summary class="cursor-pointer p-3 font-black text-sm text-slate-600"><i class="fa-solid fa-circle-question text-slate-400"></i> לא מצליח לסרוק?</summary><div class="px-3 pb-3">' +
       '<div class="text-[11px] font-bold text-slate-400 mb-1.5"><i class="fa-solid fa-keyboard"></i> הסורק לא קורא? הקלד את הספרות האחרונות של הברקוד (6 מומלץ)</div>' +
@@ -13785,7 +13929,7 @@ function reopenReceiptForDoc(id) {
 }
 function cancelReceiptAttach() {
   yotvataResetPhotoReceipt();
-  receiptList = []; receiptNotes = []; recomputeNoteTotal();
+  receiptList = []; receiptQuantityReview = null; receiptNotes = []; recomputeNoteTotal();
   receiptAttachTarget = null; receiptNoDoc = false; receiptOpened = false; editingNotes = false;
   anchorFixHint = ''; reconcileData = null;
   receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false;
@@ -13817,7 +13961,7 @@ async function confirmReceipt() {
   const attach = receiptAttachTarget;
   const opId = (attach && attach.id) || receiptDraftId || pendingReceipt.operationId || (pendingReceipt.operationId = makeOperationId('receipt'));
   const creditClaim = supplierCreditClaim ? { ...cloneSafe(supplierCreditClaim), createdAt: supplierCreditClaim.createdAt || Date.now() } : null;
-  const data = { priceAudit: receiptPriceAudit(), paperScan, scanAudit: cloneSafe(yotvataReceiptScanAudit()), timestamp: (attach && Number(attach.timestamp)) || Date.now(), date: (attach && attach.date) || todayStr(), noDoc: !!(noDoc || attach), items: lines, count: lines.length, totalExVat: ex, totalIncVat: ex, calculatedExVat: (calculatedEx != null ? calculatedEx : ex), roundingAdjustment: r2(Number(roundingAdjustment) || 0), grossExVat: (grossEx != null ? grossEx : (calculatedEx != null ? calculatedEx : ex)), supplierDiscount: r2(Number(supplierDiscount) || 0), supplierPromoItems: (Array.isArray(supplierPromoItems) ? supplierPromoItems : []), supplierPromoMismatchItems: (Array.isArray(supplierPromoMismatchItems) ? supplierPromoMismatchItems : []), supplierCreditClaim: creditClaim, aiAudit: aiAudit ? cloneSafe(aiAudit) : null, noteTotalInc: (noteTotal != null ? noteTotal : null), noteParts: (Array.isArray(noteParts) ? noteParts : []), unresolvedAmountGap: r2(Number(unresolvedAmountGap) || 0), unresolvedUnitsGap: Number(unresolvedUnitsGap) || 0, status: status || 'ok', operationId: opId };
+  const data = { quantityCheck: receiptQuantityCheckAudit(), priceAudit: receiptPriceAudit(), paperScan, scanAudit: cloneSafe(yotvataReceiptScanAudit()), timestamp: (attach && Number(attach.timestamp)) || Date.now(), date: (attach && attach.date) || todayStr(), noDoc: !!(noDoc || attach), items: lines, count: lines.length, totalExVat: ex, totalIncVat: ex, calculatedExVat: (calculatedEx != null ? calculatedEx : ex), roundingAdjustment: r2(Number(roundingAdjustment) || 0), grossExVat: (grossEx != null ? grossEx : (calculatedEx != null ? calculatedEx : ex)), supplierDiscount: r2(Number(supplierDiscount) || 0), supplierPromoItems: (Array.isArray(supplierPromoItems) ? supplierPromoItems : []), supplierPromoMismatchItems: (Array.isArray(supplierPromoMismatchItems) ? supplierPromoMismatchItems : []), supplierCreditClaim: creditClaim, aiAudit: aiAudit ? cloneSafe(aiAudit) : null, noteTotalInc: (noteTotal != null ? noteTotal : null), noteParts: (Array.isArray(noteParts) ? noteParts : []), unresolvedAmountGap: r2(Number(unresolvedAmountGap) || 0), unresolvedUnitsGap: Number(unresolvedUnitsGap) || 0, status: status || 'ok', operationId: opId };
   const saved = await runCloudTask('save receipt before clearing draft', { op: 'set', path: dataPath('receipts', opId), data, operationId: opId, receiptDraftGuard });
   if (!saved) { receiptEndFinalizing(); return; }
   if (receiptSync.mutationId !== intended) {
@@ -13828,7 +13972,7 @@ async function confirmReceipt() {
   hideReceiptSummary();
   aiCloseOrientationReview();
   yotvataResetPhotoReceipt();
-  receiptDraftId = null; receiptList = []; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; saveReceiptDraft();
+  receiptDraftId = null; receiptList = []; receiptQuantityReview = null; pendingReceipt = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; reconcileData = null; reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; reconcileSupplierCreditClaim = null; reconcileAiAudit = null; aiScanDocuments = []; aiScanBusy = false; aiScanProgressText = ''; aiScanResponse = null; aiScanEvaluation = null; aiScanReused = false; aiScanFromDraft = false; aiScanError = ''; aiScanAutoRotationNote = ''; aiScanAttemptCount = 0; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; saveReceiptDraft();
   receiptSyncCompleted(receiptDraftGuard);
   setView('receiptsHistory');
   const autoApplied = await autoApplyExactOffsets(); // v249: זוג מדויק מתקזז לבד
@@ -14823,7 +14967,7 @@ function renderReceiptsHistory() {
           '<span><i class="fa-solid fa-file-invoice"></i> תעודת קליטה</span><span class="shrink-0">' + statusTxt + '</span>' +
         '</div>' +
         '<div class="p-4 flex items-center justify-between gap-2">' +
-        '<div class="min-w-0"><div class="font-black text-slate-800 text-sm">' + dateStr + '</div><div class="text-xs text-slate-400 mt-0.5">' + (rc.count || (rc.items || []).length) + ' פריטים' + (rc.noteParts && rc.noteParts.length > 1 ? ' · <span class="text-blue-600 font-black">' + rc.noteParts.length + ' תעודות ספק</span>' : '') + metaStatus + '</div></div>' +
+        '<div class="min-w-0"><div class="font-black text-slate-800 text-sm">' + dateStr + '</div><div class="text-xs text-slate-400 mt-0.5">' + (rc.count || (rc.items || []).length) + ' פריטים' + (rc.noteParts && rc.noteParts.length > 1 ? ' · <span class="text-blue-600 font-black">' + rc.noteParts.length + ' תעודות ספק</span>' : '') + metaStatus + (rc.quantityCheck && rc.quantityCheck.method === 'manual' ? ' · <span class="text-slate-600 font-bold">הכמויות אושרו ידנית</span>' : '') + '</div></div>' +
         '<div class="flex items-center gap-2 shrink-0"><div class="text-left"><div class="text-[11px] text-slate-400">לתשלום ללא מע"מ</div><div class="font-black text-slate-800">₪' + fmtMoney(payableEx) + '</div></div><i class="fa-solid fa-chevron-down hist-chevron text-slate-400 transition-transform"></i></div>' +
         '</div>' +
       '</summary>' +
@@ -18624,6 +18768,38 @@ $('npr_ok').addEventListener('click', saveNewProduct);
 $('piClose').addEventListener('click', hidePromoInfo);
 $('rs_cancel').addEventListener('click', hideReceiptSummary);
 $('rs_ok').addEventListener('click', confirmReceipt);
+$('receiptQuantityClose').addEventListener('click', closeReceiptQuantityReview);
+$('receiptQuantityConfirm').addEventListener('click', commitReceiptQuantityReview);
+$('receiptQuantityModal').addEventListener('keydown', e => { if (e.key === 'Escape') closeReceiptQuantityReview(); });
+$('receiptQuantitySearch').addEventListener('input', e => renderReceiptQuantityRows(e.target.value));
+$('receiptQuantityRows').addEventListener('input', e => {
+  const i = e.target.dataset.quantityDifference;
+  if (i == null || !receiptQuantityReview || !receiptQuantityReview.rows[i]) return;
+  const row = receiptQuantityReview.rows[i]; row.difference = e.target.value; receiptQuantityReview.confirmedAt = null;
+  const summary = $('quantityReviewSummary_' + i); if (summary) summary.textContent = receiptQuantityRowSummary(row);
+  saveReceiptDraft();
+});
+$('receiptQuantityRows').addEventListener('change', e => {
+  const i = e.target.dataset.quantityKind;
+  if (i == null || !receiptQuantityReview || !receiptQuantityReview.rows[i]) return;
+  const row = receiptQuantityReview.rows[i]; row.kind = e.target.value;
+  if (row.kind !== 'match' && !(Number(row.difference) > 0)) row.difference = '1';
+  receiptQuantityReview.confirmedAt = null; saveReceiptDraft(); renderReceiptQuantityRows($('receiptQuantitySearch').value);
+});
+$('receiptQuantityRows').addEventListener('click', e => {
+  const button = e.target.closest('[data-quantity-remove]');
+  if (!button || !receiptQuantityReview) return;
+  const i = Number(button.dataset.quantityRemove); if (!receiptQuantityReview.rows[i] || receiptQuantityReview.rows[i].paperQty !== 0) return;
+  receiptQuantityReview.rows.splice(i, 1); receiptQuantityReview.confirmedAt = null; saveReceiptDraft(); renderReceiptQuantityRows($('receiptQuantitySearch').value);
+});
+$('receiptQuantityExtras').addEventListener('click', e => {
+  const button = e.target.closest('[data-quantity-add]'); if (!button || !receiptQuantityReview) return;
+  const p = products.find(p => p.id === button.dataset.quantityAdd);
+  if (!p || receiptQuantityReview.rows.some(row => row.productId === p.id)) return;
+  receiptQuantityReview.rows.push({ productId:p.id, name:p.name, barcode:p.barcode || '', paperQty:0, kind:'surplus', difference:'1' });
+  receiptQuantityReview.confirmedAt = null; saveReceiptDraft(); renderReceiptQuantityRows($('receiptQuantitySearch').value);
+});
+
 $('qty_minus').addEventListener('click', () => qtyStep(-1));
 $('qty_plus').addEventListener('click', () => qtyStep(1));
 $('qty_done').addEventListener('click', () => commitQty(false));
@@ -18939,6 +19115,7 @@ app.addEventListener('click', (e) => {
   if (unitBtn) { toggleUnit(unitBtn.dataset.id, unitBtn); buzz(8); return; }
   const t = e.target.closest('[data-role]'); if (!t) return;
   const role = t.dataset.role, id = t.dataset.id;
+  if (role === 'rc-quantity-all' || role === 'rc-quantity-differences') { startReceiptQuantityReview(role === 'rc-quantity-all'); return; }
   // v235: ניתוח מוצרים — כל הפעולות כאן הן תצוגה בלבד
   if (role === 'an-preset') {
     const p = t.dataset.preset || 'd30';
@@ -18970,7 +19147,7 @@ app.addEventListener('click', (e) => {
   if (role.startsWith('rc-photo-')) {
     if (aiScanBusy) return;
     const docIndex = Number(t.dataset.doc) || 0;
-    if (role === 'rc-photo-start') { yotvataStartPaperScan(); return; }
+    if (role === 'rc-photo-start' || role === 'rc-photo-quantity') { yotvataStartPaperScan({ manualQuantities: role === 'rc-photo-quantity' }); return; }
     if (role === 'rc-photo-manual') { switchReceiptEntryMode('manual'); return; }
     if (role === 'rc-photo-capture') { switchReceiptEntryMode('photo'); return; }
     receiptRememberScanResults();
@@ -19109,7 +19286,7 @@ app.addEventListener('click', (e) => {
   // v272: ביטול תעודה חייב למחוק גם את הצילומים ואת קריאת הנייר. כל עוד כל
   // כניסה למסך ההשוואה איפסה אותם ממילא, הדילוג כאן לא הזיק; מרגע שהם שורדים
   // בין המסכים, תעודה שבוטלה הייתה יכולה להוריש את הנייר שלה לתעודה הבאה.
-  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { yotvataResetPhotoReceipt(); receiptDraftId = null; receiptList = []; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
+  else if (role === 'rc-cancel') { showConfirm('ביטול תעודה', 'לבטל את התעודה הנוכחית? כל הפריטים שנסרקו יימחקו.', 'בטל תעודה', () => { yotvataResetPhotoReceipt(); receiptDraftId = null; receiptList = []; receiptQuantityReview = null; receiptNotes = []; recomputeNoteTotal(); receiptOpened = false; editingNotes = false; anchorFixHint = ''; reconcileData = null; receiptDupConfirmed = false; receiptDepositWaived = false; receiptUnitsWaived = false; receiptNoDoc = false; receiptAttachTarget = null; resetAiInvoiceScan(true); aiScanDocuments = []; saveReceiptDraft(); setView('receiving'); }); }
   else if (role === 'rc-note-add') {
     // v274: הפעולה עוטפת את עצמה, כדי שאישור ההצהרה על חוסר סך יחידות
     // יוסיף את התעודה במקום להשאיר את העובד מול שדות מלאים שלא נקלטו.

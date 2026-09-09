@@ -26,7 +26,7 @@ function context(extra = {}) {
     Map, Set, Array, Object, String, Promise, Error, PRICE_AUDIT_SUPPLIER: 'yotvata', receiptPriceSaveFailed:false,
     db:null, receiptStorageWarning:'',receiptDraftId:null,makeOperationId:()=> 'test-' + Math.random(),receiptAnalysisCache:null,aiScanEditingImages:false,
     receiptSync:{revision:0,dirty:false},receiptSyncSignature:null,receiptCloudReady:false,receiptSyncTimer:null,receiptSyncConflict:null,receiptSyncError:'',receiptFinalizing:false,
-    receiptManualInput: null, $: () => null, htmlEscape: String, fmtMoney: String,
+    receiptQuantityReview: null, receiptManualInput: null, $: () => null, htmlEscape: String, fmtMoney: String,
     receiptEntryMode: 'photo', receiptAnchorSource: null, receiptPaperScanState: '', receiptPaperScanProblems: [],
     receiptPhotoCaptureOpen: false, receiptScanHistory: [], aiScanRunId: 0, receiptOpened: false,
     receiptNotes: [], receiptNoteTotal: null, receiptNoteUnits: null, receiptList: [], receiptDepositWaived: false,
