@@ -11104,7 +11104,10 @@ function aiEvaluateInvoiceScan(payload) {
   // מהיעדר שורה בנייר — ותעודה שלא נקראה היא היעדר שורות שאינו ראיה לכלום.
   const basketComplete = allRowsMapped && unusableRows === 0 && missingDocuments === 0 && returned.size === aiScanDocuments.length;
   if (aggregates.size > 0) {
-    const day = todayStr();
+    // תוקף המבצע נקבע לפי תאריך התעודה, כמו בבדיקת המחירים ובמסך ההשוואה.
+    // עד כאן נבדק לפי היום, ולכן תעודה מתאריך קודם נשפטה מול מבצעי היום
+    // ודרישת הזיכוי מהספק נבנתה על מחיר צפוי שגוי.
+    const day = activeReceiptDate();
     const paperPromoTriggered = pr => aiBilledPromoTriggered(pr, aggregates, day);
     // v272: מחיר הסחורה שהתקבלה, מתוקן לפי המבצע שהנייר מוכיח שחויב. שורה
     // שנשארה במחיר מלא רק מפני שהחוסר עצמו שחק את הסל מתומחרת מחדש כאן —

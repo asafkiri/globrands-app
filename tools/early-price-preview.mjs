@@ -17,7 +17,7 @@ runCloudTask=async(label,task)=>{$('priceReplaySaved').textContent=JSON.stringif
 let previewRequests=Number(localStorage.getItem('price-preview-count')||0);
 window.fetch=async(url,options)=>{
  if(String(url).endsWith('/health'))return {ok:true,json:async()=>({ok:true,keyConfigured:true,serviceVersion:${supplier==='tnuva'?10:145},photoFirst:true})};
- if(String(url)===AI_SCAN_WORKER_URL){previewRequests++;localStorage.setItem('price-preview-count',String(previewRequests));$('priceReplayRequests').textContent=previewRequests;return {ok:true,status:200,json:async()=>${JSON.stringify(paper)}};}
+ if(String(url)===AI_SCAN_WORKER_URL){previewRequests++;localStorage.setItem('price-preview-count',String(previewRequests));$('priceReplayRequests').textContent=previewRequests;return {ok:true,status:200,json:async()=>(${JSON.stringify(paper)})};}
  throw Error('External network disabled in local fixture replay');
 };
 function priceReplayState(){ $('priceReplayCount').textContent=receiptList.reduce((n,r)=>n+r.qty,0);$('priceReplayRequests').textContent=previewRequests; }
