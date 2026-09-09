@@ -181,3 +181,28 @@ test(supplier+': the manual quantity choice is folded and remembers how it was l
  r.click('rc-quantity-differences');
  assert.ok(r.run('!!receiptQuantityReview'));
 });
+
+// Confirming the quantities by hand and then being asked "everything matches —
+// continue?" is the same question twice. It is answered automatically only when
+// the comparison has nothing left to decide.
+test(supplier+': a clean manual confirmation closes without asking the same question twice',async()=>{
+ const r=await scanned(plainData(),[]);
+ r.run('startReceiptQuantityReview(false)');
+ r.run("receiptQuantityReview.rows.forEach(x=>{x.kind='match';x.difference='0'})");
+ assert.equal(r.run('commitReceiptQuantityReview()'),true);
+ assert.equal(r.run('!!pendingReceipt'),true);
+ // Whatever the quantities say, none of these is ever skipped.
+ assert.equal(r.run("aiScanAllGood({valid:true,findings:[{type:'price'}],residuals:[],barcodeSuggestions:[]})"),false);
+ assert.equal(r.run("aiScanAllGood({valid:true,findings:[{type:'promo_missing'}],residuals:[],barcodeSuggestions:[]})"),false);
+ assert.equal(r.run("aiScanAllGood({valid:true,findings:[],residuals:[{}],barcodeSuggestions:[]})"),false);
+ assert.equal(r.run("aiScanAllGood({valid:true,findings:[],residuals:[],barcodeSuggestions:[{unknownProduct:true}]})"),false);
+ assert.equal(r.run("aiScanAllGood({valid:false,findings:[],residuals:[],barcodeSuggestions:[]})"),false);
+});
+test(supplier+': a declared shortage still stops on the comparison screen',async()=>{
+ const r=await scanned(plainData(),[]);
+ r.run('startReceiptQuantityReview(false)');
+ r.run("receiptQuantityReview.rows.forEach((x,i)=>{x.kind=i?'match':'shortage';x.difference=i?'0':'2'})");
+ assert.equal(r.run('commitReceiptQuantityReview()'),true);
+ assert.equal(r.run('!!pendingReceipt'),false);
+ assert.equal(r.run('currentView'),'reconcile');
+});
