@@ -9696,6 +9696,22 @@ function priceAuditDocumentComplete(doc, raw, input) {
     && Number(raw.printedLines) === rows.length
     && Number(raw.totalUnits ?? raw.printedUnits) === rows.reduce((n, r) => n + (/פ.?קדון/.test(r.description || '') ? 0 : Number(r.quantity)), 0);
 }
+// The day a promotion is judged by. The local review and the comparison engine
+// both read it here, so the two can never answer the same question with two
+// different dates. The paper's own date comes first; the field typed by hand is
+// only a fallback, because the photo flow usually leaves it empty.
+function priceAuditDocumentDay(doc, source) {
+  const paper = source === undefined ? (doc && Array.isArray(doc.rows) ? priceAuditSource(doc) : null) : source;
+  return priceAuditDate((doc && doc.__priceConfirmedDate) || (paper && paper.docDate) || (typeof receiptDocDate !== 'undefined' && receiptDocDate));
+}
+// Documents that disagree keep the previous behaviour rather than letting one
+// document's date speak for the rest of the receipt.
+function priceAuditPromoDay() {
+  const docs = (aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents) || [];
+  const days = new Set();
+  docs.forEach(doc => { const day = priceAuditDocumentDay(doc); if (day) days.add(day); });
+  return days.size === 1 ? days.values().next().value : activeReceiptDate();
+}
 function receiptPriceAudit() {
   const docs = aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents || [];
   const out = { version: 1, supplier: PRICE_AUDIT_SUPPLIER, documents: [], rows: [], complete: false, state: 'empty' };
@@ -9709,7 +9725,7 @@ function receiptPriceAudit() {
   docs.forEach((doc, di) => {
     const source = sources[di], rawRows = source && source.rows || doc.rows || [];
     const relevant = rawRows.map((raw, sourceIndex) => ({ raw, sourceIndex })).filter(x => x.raw.section !== 'returns');
-    const readDate = priceAuditDate(doc.__priceConfirmedDate || (source && source.docDate) || (typeof receiptDocDate !== 'undefined' && receiptDocDate));
+    const readDate = priceAuditDocumentDay(doc, source);
     // שירות הפענוח של יטבתה אינו מחזיר תאריך תעודה. בלי תאריך כל שורה נשארה
     // "לא ניתן לבדוק", ולכן מניחים את היום — אבל ההנחה מסומנת בכל מקום שבו
     // התוצאה מוצגת, כי תוקף המבצע נשען עליה. תאריך שהמשתמש הזין גובר עליה.
@@ -9861,7 +9877,11 @@ function receiptPriceAuditHtml(report) {
 function priceAuditSetDate(index, value) {
   const day = priceAuditDate(value), doc = aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents.find(d => d.noteIndex === index);
   if (!doc || !day) return false;
-  doc.__priceConfirmedDate = day; saveReceiptDraft(); refreshScanHost(); refreshPriceAuditViews(); return true;
+  doc.__priceConfirmedDate = day;
+  // The date decides which promotion was in force, so the comparison engine is
+  // rebuilt too; otherwise the findings keep judging by the previous day.
+  if (aiScanResponse) { try { aiScanEvaluation = aiEvaluateInvoiceScan(aiScanResponse); } catch (e) {} }
+  saveReceiptDraft(); refreshScanHost(); refreshPriceAuditViews(); return true;
 }
 
 
@@ -9870,7 +9890,10 @@ function priceAuditSetDate(index, value) {
 function priceAuditLegacyVisible(f) {
   if (!f || !['price', 'promo_missing'].includes(f.type)) return true;
   const a = receiptPriceAudit();
-  return !a.rows.some(r => r.productId && r.productId === f.productId);
+  // Only a row the review actually judged replaces the old alert. A row it could
+  // not check is not an answer, and hiding a finding behind it drops a real
+  // price warning without putting anything in its place.
+  return !a.rows.some(r => r.productId && r.productId === f.productId && r.capability === 'checkable' && r.result);
 }
 function refreshPriceScannerNotice() {
   const button = $('scanPriceNotice'); if (!button) return;
@@ -11122,8 +11145,10 @@ function aiEvaluateInvoiceScan(payload) {
   if (aggregates.size > 0) {
     // תוקף המבצע נקבע לפי תאריך התעודה, כמו בבדיקת המחירים ובמסך ההשוואה.
     // עד כאן נבדק לפי היום, ולכן תעודה מתאריך קודם נשפטה מול מבצעי היום
-    // ודרישת הזיכוי מהספק נבנתה על מחיר צפוי שגוי.
-    const day = activeReceiptDate();
+    // ודרישת הזיכוי מהספק נבנתה על מחיר צפוי שגוי. activeReceiptDate() מכיר רק
+    // את התאריך שהוקלד ביד, ובמסלול הצילום השדה הזה נשאר ריק — ולכן התאריך
+    // נקרא מאותו מקור שממנו קוראת בדיקת המחירים.
+    const day = priceAuditPromoDay();
     const paperPromoTriggered = pr => aiBilledPromoTriggered(pr, aggregates, day);
     // v272: מחיר הסחורה שהתקבלה, מתוקן לפי המבצע שהנייר מוכיח שחויב. שורה
     // שנשארה במחיר מלא רק מפני שהחוסר עצמו שחק את הסל מתומחרת מחדש כאן —
@@ -13499,8 +13524,12 @@ function presentReconcileSummary(lines, ex, open, extra) {
   const discountSummary = (Number(extra.supplierDiscount) || 0) > 0
     ? '<div class="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs font-bold text-emerald-800"><i class="fa-solid fa-percent"></i> הנחת ספק / מבצע: −₪' + fmtMoney(extra.supplierDiscount) + (extra.supplierPromoItems && extra.supplierPromoItems.length ? '<div class="text-[11px] mt-1">סומנו בכוכבית: ' + extra.supplierPromoItems.map(x => x.name).join(' · ') + '</div>' : '') + '</div>'
     : '';
-  const promoMismatchSummary = (!receiptPriceAudit().rows.length && extra.supplierPromoMismatchItems && extra.supplierPromoMismatchItems.length)
-    ? '<div class="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-xs font-bold text-amber-800"><i class="fa-solid fa-triangle-exclamation"></i> מבצע שמוגדר במערכת לא הופיע בתעודת הספק<div class="text-[11px] mt-1">' + extra.supplierPromoMismatchItems.map(x => x.name).join(' · ') + '</div></div>'
+  // A product the review judged for itself is not warned about twice; one it
+  // could not check keeps the warning it always had.
+  const promoMismatchItems = (Array.isArray(extra.supplierPromoMismatchItems) ? extra.supplierPromoMismatchItems : [])
+    .filter(x => priceAuditLegacyVisible({ type: 'promo_missing', productId: x && x.productId }));
+  const promoMismatchSummary = promoMismatchItems.length
+    ? '<div class="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-xs font-bold text-amber-800"><i class="fa-solid fa-triangle-exclamation"></i> מבצע שמוגדר במערכת לא הופיע בתעודת הספק<div class="text-[11px] mt-1">' + promoMismatchItems.map(x => x.name).join(' · ') + '</div></div>'
     : '';
   const supplierCreditSummary = (extra.supplierCreditClaim && Number(extra.supplierCreditClaim.amount) > 0)
     ? '<div class="mt-2 rounded-xl bg-orange-50 border-2 border-orange-300 p-3 text-xs font-bold text-orange-900"><div class="font-black text-sm"><i class="fa-solid fa-triangle-exclamation"></i> נפתחה דרישת זיכוי פתוחה מול הספק</div><div class="mt-1">סכום מוערך לזיכוי: ₪' + fmtMoney(extra.supplierCreditClaim.amount) + '</div><div class="text-[11px] mt-1">ייכנס לחישוב הספק כזיכוי שמגיע, אך יישאר מסומן כלא מאומת עד בדיקה מול מרכזת/תעודת זיכוי.</div></div>'
