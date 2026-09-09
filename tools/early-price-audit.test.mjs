@@ -103,10 +103,37 @@ if(supplier!=='berman'){
  });
 }
 if(supplier==='yotvata'){
- test('yotvata: missing date can be completed from the real date field before any counting',async()=>{
-  const data=fixture({unit:6}),c=create(data);await scan(c,data,{completeDate:false});assert.match(view(c),/data-role="price-doc-date"/);assert.equal(report(c).rows[0].result,null);
+ test('yotvata: missing date falls back to today, flagged as assumed, and is correctable',async()=>{
+  const data=fixture({unit:6}),c=create(data);let html=await scan(c,data,{completeDate:false});
+  // The service returns no document date. The row is still evaluated, but the
+  // assumption must be visible everywhere the verdict is shown.
+  assert.match(html,/data-role="price-doc-date"/);
+  let r=report(c).rows[0];
+  assert.equal(r.result,'difference');
+  assert.equal(r.dateAssumed,true);
+  assert.equal(r.date,c.run('todayStr()'));
+  assert.equal(report(c).documents[0].dateAssumed,true);
+  assert.match(html,/משוער/);
+  assert.match(html,/תאריך התעודה לא נקרא בפענוח/);
+  // An assumed date must never be hidden behind a collapsed summary.
+  assert.doesNotMatch(html,/<summary[^>]*>תאריך התעודה: /);
+  // Supplying the real date clears the assumption and every marker with it.
   await c.events.get('app:change')({target:{dataset:{role:'price-doc-date',doc:'0'},value:'2026-09-09'}});
-  assert.equal(report(c).rows[0].result,'difference');assert.equal(c.run('receiptList.length'),0);assert.equal(requests(c),1);
+  html=view(c); r=report(c).rows[0];
+  assert.equal(r.result,'difference');
+  assert.equal(r.dateAssumed,false);
+  assert.equal(r.date,'2026-09-09');
+  assert.doesNotMatch(html,/תאריך התעודה לא נקרא בפענוח/);
+  assert.equal(c.run('receiptList.length'),0);assert.equal(requests(c),1);
+ });
+ test('yotvata: an assumed date never reads as a clean pass',async()=>{
+  const data=fixture({unit:5}),c=create(data);const html=await scan(c,data,{completeDate:false});
+  const r=report(c).rows[0];
+  assert.equal(r.result,'match');
+  assert.equal(r.dateAssumed,true);
+  // headline must carry the caveat rather than a bare "prices match"
+  assert.match(html,/המחירים שנבדקו תואמים · לפי תאריך משוער/);
+  assert.equal(requests(c),1);
  });
  test('yotvata: row discount and summary already included are not applied twice',async()=>{
   const data=fixture({promo:{},summary:10}),d=data.paper.scan.documents[0];Object.assign(d.rows[0],{lineTotalExVat:40,lineDiscountExVat:10});
