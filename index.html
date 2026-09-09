@@ -1101,7 +1101,7 @@ function yotvataPaperStatusHtml() {
   if (receiptStorageWarning) return '<div class="rounded-xl bg-amber-50 border border-amber-300 p-3 mb-3 font-bold text-amber-900">' + htmlEscape(receiptStorageWarning) + '</div>';
   if (receiptEntryMode !== 'photo') return '';
   if (receiptPaperScanState === 'running') return '<div class="rounded-xl bg-blue-50 border border-blue-200 p-3 mb-3 text-sm font-bold text-blue-800"><i class="fa-solid fa-circle-notch fa-spin"></i> ' + htmlEscape(aiScanProgressText || 'קורא את התעודה ברקע…') + '<div class="mt-1">אפשר לסרוק מוצרים כרגיל.</div></div>';
-  if (receiptPaperScanState === 'ok') return '<div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 mb-3 text-sm font-bold text-emerald-800">✓ התעודה נקראה וסיכומיה אומתו. השוואת הכמויות לספירה תתבצע בסיום הקליטה.</div>';
+  if (receiptPaperScanState === 'ok') return '<div class="rounded-xl bg-emerald-50 border border-emerald-200 p-2 mb-2 text-[11px] font-black text-emerald-800"><i class="fa-solid fa-file-circle-check"></i> התעודה נקראה ואומתה · השוואת הכמויות בסיום הקליטה</div>';
   if (receiptPaperScanState === 'failed' || receiptPaperScanState === 'interrupted') return '<div class="rounded-xl bg-amber-50 border border-amber-300 p-3 mb-3 text-sm font-bold text-amber-900">אפשר להמשיך בספירה. לפני הסיום צריך להשלים את נתוני התעודה.' +
     '<div class="mt-1 text-xs">' + receiptPaperScanProblems.map(htmlEscape).join('<br>') + '</div>' +
     '<button data-role="rc-photo-repair" class="btn-tap w-full bg-white border border-amber-300 rounded-xl py-2 mt-2">בדוק צילומים / הוסף עמוד חסר</button>' +
@@ -6866,10 +6866,11 @@ function receiptQuantityPaperRows() {
 }
 function receiptQuantityButtonsHtml() {
   if (receiptNoDoc || receiptAttachTarget || receiptPaperScanState !== 'ok' || !aiScanResponse) return '';
-  return '<div class="bg-white border border-slate-200 rounded-2xl p-3 mb-3">' +
-    '<div class="font-black text-slate-800 text-base mb-2">כבר בדקת את הכמויות מול התעודה?</div>' +
-    '<button data-role="rc-quantity-all" class="btn-tap w-full bg-emerald-600 text-white rounded-xl py-3 font-black text-base">בדקתי ידנית — כל הכמויות תואמות</button>' +
-    '<button data-role="rc-quantity-differences" class="btn-tap w-full bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-3 mt-2 font-black text-base">בדקתי ידנית — יש חוסרים או עודפים</button></div>';
+  return '<div class="bg-white border border-slate-200 rounded-xl p-2 mb-2">' +
+    '<div class="text-[11px] font-bold text-slate-500 mb-1.5">בדקת ידנית את הכמויות מול התעודה?</div>' +
+    '<div class="flex gap-2">' +
+    '<button data-role="rc-quantity-all" class="btn-tap flex-1 bg-emerald-600 text-white rounded-xl py-2.5 font-black text-sm">כל הכמויות תואמות</button>' +
+    '<button data-role="rc-quantity-differences" class="btn-tap flex-1 bg-white border-2 border-blue-300 text-blue-800 rounded-xl py-2.5 font-black text-sm">יש חוסרים או עודפים</button></div></div>';
 }
 function receiptQuantityRowsSignature(rows) {
   return JSON.stringify(rows.map(r => [r.productId, r.paperQty]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
@@ -10003,7 +10004,19 @@ function receiptPriceAuditHtml(report) {
     '<div class="font-bold mt-2">' + htmlEscape(r.reason) + '</div>' +
     (r.dateAssumed ? '<div class="text-xs bg-amber-50 border border-amber-300 rounded-lg p-2 mt-2">תאריך התעודה לא נקרא בפענוח. הבדיקה נעשתה לפי היום (' + htmlEscape(r.date || '') + '), ולכן תוקף המבצע כאן <b>משוער</b>. אם התעודה מתאריך אחר — עדכן את התאריך למעלה והבדיקה תחושב מחדש.</div>' : '') +
     (r.monthlyStatus ? '<div class="text-xs bg-blue-50 p-2 mt-2">' + htmlEscape(r.monthlyStatus) + '</div>' : '') + '</article>').join('');
-  return shell + '<div role="status" class="font-black">' + title + '</div><div class="mt-1">' + differences.length + ' שורות עם פער · ' + missing.length + ' שורות שלא ניתן לבדוק</div>' +
+  // A review with nothing to act on folds into a single line. Open, it filled the
+  // receiving screen with notices and pushed the scan button below the fold. A
+  // priced gap, or a row that could not be checked, still opens by itself.
+  const openPanel = differences.length > 0 || !a.complete;
+  const badge = differences.length ? differences.length + '/' + a.rows.length + ' עם פער'
+    : (missing.length ? missing.length + '/' + a.rows.length + ' לא נבדקו' : a.rows.length + ' שורות');
+  const panelShell = '<section data-price-audit class="rounded-xl ' + (openPanel ? 'border-2 border-amber-300' : 'border border-emerald-200')
+    + ' bg-white p-2.5 mb-2 text-sm" dir="rtl" aria-label="בדיקת מחירים ומבצעים">';
+  return panelShell + '<details data-price-panel' + (openPanel ? ' open' : '') +
+    '><summary class="flex items-center justify-between gap-2 cursor-pointer font-black ' +
+    (differences.length ? 'text-rose-800' : openPanel ? 'text-amber-900' : 'text-emerald-800') + '">' +
+    '<span role="status">' + title + ' · ' + badge + '</span><i class="fa-solid fa-chevron-down hist-chevron shrink-0"></i></summary>' +
+    '<div class="mt-1">' + differences.length + ' שורות עם פער · ' + missing.length + ' שורות שלא ניתן לבדוק</div>' +
     '<div class="text-xs text-slate-600 mt-1">ללא מע״מ · אותה יחידת מוצר · פיקדון בנפרד · לפי הכמות בנייר. הספירה אינה משפיעה על בדיקה זו.</div>' +
     a.documents.map(d => {
       const label = '<label class="block mt-2 font-bold">' + (d.dateAssumed ? 'תאריך התעודה ' : 'השלם תאריך לתעודה ') + htmlEscape(d.number || String(d.index + 1)) + '<input type="date" data-role="price-doc-date" data-doc="' + d.index + '" value="' + htmlEscape(d.date || '') + '" class="block w-full border rounded-lg p-2 mt-1" aria-label="תאריך התעודה לבדיקת מחירים"></label>';
@@ -10016,7 +10029,7 @@ function receiptPriceAuditHtml(report) {
       if (d.date) return '<details><summary class="cursor-pointer mt-2">תאריך התעודה: ' + htmlEscape(d.date) + ' · עריכה</summary>' + label + '</details>' + discount;
       return label + discount;
     }).join('') +
-    '<details data-price-details><summary class="cursor-pointer font-black py-3">פתח פירוט מחירים ומצבים לבדיקה (' + a.rows.length + ')</summary>' + cards + '</details></section>';
+    '<details data-price-details><summary class="cursor-pointer font-black py-3">פתח פירוט מחירים ומצבים לבדיקה (' + a.rows.length + ')</summary>' + cards + '</details></details></section>';
 }
 function priceAuditSetDate(index, value) {
   const day = priceAuditDate(value), doc = aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents.find(d => d.noteIndex === index);
@@ -10058,10 +10071,10 @@ function refreshPriceAuditViews() {
       if (status) status.textContent = 'נתוני הבדיקה השתנו — המחירים יתעדכנו בסיום עריכת התאריך';
       return;
     }
-    const open = host.querySelector('[data-price-details]');
-    const expanded = open && open.open;
+    const folds = ['[data-price-panel]', '[data-price-details]'];
+    const expanded = folds.map(sel => { const el = host.querySelector(sel); return !!(el && el.open); });
     host.innerHTML = receiptPriceAuditHtml();
-    const next = host.querySelector('[data-price-details]'); if (next && expanded) next.open = true;
+    folds.forEach((sel, i) => { const el = host.querySelector(sel); if (el && expanded[i]) el.open = true; });
   });
 }
 
@@ -19038,7 +19051,7 @@ app.addEventListener('input', (e) => {
 });
 
 $('rsBody').addEventListener('change', e => { if (e.target.dataset.role === 'price-doc-date') priceAuditSetDate(Number(e.target.dataset.doc), e.target.value); });
-$('scanPriceNotice').addEventListener('click', () => { closeScanner(); renderReceiving(); const details = app.querySelector('[data-price-details]'); if (details) { details.open = true; details.scrollIntoView({ block: 'start' }); } });
+$('scanPriceNotice').addEventListener('click', () => { closeScanner(); renderReceiving(); const panel = app.querySelector('[data-price-panel]'); if (panel) panel.open = true; const details = app.querySelector('[data-price-details]'); if (details) { details.open = true; details.scrollIntoView({ block: 'start' }); } });
 app.addEventListener('change', (e) => {
   if (e.target.dataset.role === 'price-doc-date') { priceAuditSetDate(Number(e.target.dataset.doc), e.target.value); return; }
   const t = e.target;
