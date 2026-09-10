@@ -12810,7 +12810,10 @@ function aiAutomaticNamePriceMappingsAudit() {
       const resolution = aiResolveInvoiceBarcode(row);
       const automaticMethod = String(resolution && resolution.method || '');
       const partialBarcodeMethod = ['verified_suffix_name', 'verified_pattern_name', 'verified_one_digit_name'].includes(automaticMethod);
-      if (!resolution || (!partialBarcodeMethod && automaticMethod !== 'verified_name_price') || !resolution.product || !resolution.barcode || !resolution.identityEvidence) return;
+      // הכרעת קונפליקט בין שתי קריאות ברקוד היא החלטת זהות שנעשתה במכשיר
+      // ולא נקראה מהנייר, ולכן היא נכנסת לאותו תיעוד עם המועמדים שנשקלו.
+      const conflictMethod = automaticMethod.indexOf('conflict_') === 0;
+      if (!resolution || (!partialBarcodeMethod && !conflictMethod && automaticMethod !== 'verified_name_price') || !resolution.product || !resolution.barcode || !resolution.identityEvidence) return;
       const proof = resolution.identityEvidence;
       output.push({
         documentIndex: Number.isInteger(Number(doc.noteIndex)) ? Number(doc.noteIndex) : documentIndex,
@@ -12820,7 +12823,9 @@ function aiAutomaticNamePriceMappingsAudit() {
         productId: resolution.product.id,
         productName: String(resolution.product.name || '').slice(0, 160),
         barcode: resolution.barcode,
-        barcodeSource: partialBarcodeMethod ? 'catalog_after_unique_partial_barcode_and_name' : 'catalog_after_name_price_crosscheck',
+        barcodeSource: conflictMethod ? 'catalog_after_conflicting_barcode_reads' : partialBarcodeMethod ? 'catalog_after_unique_partial_barcode_and_name' : 'catalog_after_name_price_crosscheck',
+        conflictCandidates: Array.isArray(proof.conflictCandidates) ? proof.conflictCandidates.slice(0, 8) : null,
+        priceAssisted: resolution.priceAssisted === true,
         confirmationSource: automaticMethod,
         catalogHintId: String(row.catalogHintId == null ? '' : row.catalogHintId).slice(0, 160) || null,
         printedDescription: String(row.description || '').slice(0, 160),

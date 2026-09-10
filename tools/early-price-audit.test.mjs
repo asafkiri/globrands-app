@@ -209,6 +209,13 @@ if(supplier==='yotvata'){
   const html=view(c);
   assert.doesNotMatch(html,/בחר לפי הנייר/);
   assert.equal(requests(c),1);
+  // The choice must survive a reload. Unlike the ambiguous-name flow, the
+  // candidate list is re-derived from the two reads, which the draft persists.
+  c.run('saveReceiptDraft()');
+  const b=reload(c,data);b.run("currentView='receiving';mainMode='receiving'");
+  assert.equal(report(b).rows[0].productId,'coffee');
+  assert.equal(report(b).rows[0].capability,'checkable');
+  assert.equal(requests(b),0);
   // A choice the row can no longer justify is refused on replay.
   c.run("aiScanResponse.scan.documents[0].rows[0].barcodeUserConfirmedFromCatalogHintId='milk'");
   assert.equal(c.run("!!(aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]).product)"),false);
