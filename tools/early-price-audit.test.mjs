@@ -239,6 +239,32 @@ if(supplier==='yotvata'){
   assert.equal(r.choice,null);
   assert.doesNotMatch(html,/בחר לפי הנייר/);
  });
+ test('yotvata: a corrected document date decides which promotion the tie-break may use',async()=>{
+  // Promo item costs 10, less a 20% promotion running 1.9–30.9 → 8.
+  // Plain item costs 8 outright. The paper charges 8.
+  const PROMO_ITEM={id:'promoitem',name:'פריט מבצע',code:'22',barcode:'7290000000022',price:10,listPrice:10,discountPct:0,discountSet:true};
+  const PLAIN_ITEM={id:'plainitem',name:'פריט רגיל',code:'39',barcode:'7290000000039',price:8,listPrice:8,discountPct:0,discountSet:true};
+  const row=priced(conflictRow({barcodeObserved:'7290000000022',barcodeInitialObserved:'7290000000022',
+   barcodeRetryObserved:'7290000000039',
+   barcodeRetryConflictInitialCandidate:'7290000000022',barcodeRetryConflictRetryCandidate:'7290000000039'}),8);
+  const data=fixture({rows:[row],extraProducts:[PROMO_ITEM,PLAIN_ITEM],promo:{productIds:['promoitem'],pct:20,start:'2026-09-01',end:'2026-09-30'}});
+  const c=create(data);
+  await scan(c,data,{completeDate:false});
+  const decision=()=>{const r=JSON.parse(c.run("JSON.stringify(aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]),(k,v)=>k==='product'?v.id:v)"));return r.method?r.method+':'+r.product:'undecided';};
+  // Default day is the receiving day, inside the promotion — both candidates can
+  // explain a printed 8, so the app refuses to guess and asks.
+  assert.equal(decision(),'undecided');
+  assert.match(view(c),/בחר לפי הנייר/);
+  // The user says the note is from 31.8, before the promotion started. The promo
+  // item would have cost 10 that day, so only the plain item explains the price.
+  c.run("priceAuditSetDate(0,'2026-08-31')");
+  assert.equal(decision(),'conflict_price:plainitem');
+  // Price decided it, so the price audit still may not bless that price.
+  const r=report(c).rows[0];
+  assert.equal(r.capability,'unidentified');
+  assert.equal(r.choice,null);
+  assert.equal(requests(c),1);
+ });
  test('yotvata: row discount and summary already included are not applied twice',async()=>{
   const data=fixture({promo:{},summary:10}),d=data.paper.scan.documents[0];Object.assign(d.rows[0],{lineTotalExVat:40,lineDiscountExVat:10});
   const c=create(data);await scan(c,data);assert.equal(report(c).rows[0].chargedUnitPrice,4);assert.equal(report(c).rows[0].result,'match');assert.match(view(c),/לא הופחתה שוב/);assert.equal(requests(c),1);

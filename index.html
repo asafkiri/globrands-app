@@ -7554,12 +7554,14 @@ const DETECTIVE_QUESTION_POOL_LIMIT = 96; // שואלים רק כשכל סט ה�
 function detectiveEffectiveProductPrice(p) {
   if (!p) return { price: 0, promoOn: false, promoPct: 0 };
   const base = r2(Number(p.price) || 0);
-  const pr = promoForProduct(p.id, todayStr());
+  const day = receiptPromoDay();
+  const pr = promoForProduct(p.id, day);
   // v206: מועמד של הבלש הוא מוצר שחסר — לא נסרק — ולכן הסל החי לעולם לא
   // יעמוד במינימום המבצע שלו (promoTriggered נכשל בהגדרה על שורה שנמחקה).
   // המחיר שקובע הוא מחיר הנייר, והנייר כלל את היחידות החסרות; לכן די בכך
   // שהמבצע פעיל לתאריך. והמחיר נשאר בדיוק מלא: 4.4854 נשאר 4.4854, לא 4.49.
-  const on = !!(pr && promoActive(pr, todayStr()));
+  // התאריך הוא של התעודה כפי שהוזנה, לא של היום.
+  const on = !!(pr && promoActive(pr, day));
   const pct = on ? (Number(pr.pct) || 0) : 0;
   // v207: גם מינימום המבצע מדווח — מועמד חסר במחיר מבצע חייב לעמוד בו בעצמו
   return { price: on ? discountedUnitPrice(base, pct) : base, promoOn: on, promoPct: pct, promoMin: on ? promoMinUnitsP(pr) : 0 };
@@ -8060,7 +8062,7 @@ function detectiveSolutions() {
 function detectivePromoConflict() {
   const gap = reconcileGap();
   if (gap >= -1 || !reconcileUnitsBalanced()) return null; // מבצע יכול להסביר כסף, לעולם לא יחידות חסרות
-  const day = todayStr();
+  const day = receiptPromoDay();
   let total = 0; const items = [];
   (reconcileData || []).forEach(l => {
     if (l.promoOn) return; // המבצע כבר משוקלל במחיר השורה — אין כפל
@@ -8300,8 +8302,9 @@ function detectiveApplyResolvedResult(result, i, selectPrefix) {
       // נפרדת). דורסים רק מחיר אוטומטי (בסיס או מבצע) — מחיר שהוקלד ידנית נשמר.
       const base = r2(Number(p.price) || 0);
       const unitEx = info.unit - info.dep;
-      const pr = promoForProduct(p.id, todayStr());
-      const activePct = (pr && promoActive(pr, todayStr())) ? (Number(pr.pct) || 0) : 0;
+      const promoDay = receiptPromoDay();
+      const pr = promoForProduct(p.id, promoDay);
+      const activePct = (pr && promoActive(pr, promoDay)) ? (Number(pr.pct) || 0) : 0;
       const autoPriced = Math.abs((Number(l.price) || 0) - base) < 0.005 ||
         (activePct > 0 && Math.abs((Number(l.price) || 0) - discountedUnitPrice(base, activePct)) < 0.005);
       if (autoPriced && Math.abs((Number(l.price) || 0) - unitEx) > 0.0005) {
@@ -9938,6 +9941,21 @@ function priceAuditPromoDay() {
   docs.forEach(doc => { const day = priceAuditDocumentDay(doc); if (day) days.add(day); });
   return days.size === 1 ? days.values().next().value : activeReceiptDate();
 }
+// יום המבצע של הקליטה. ברירת המחדל היא יום הקליטה, אבל תאריך שהמשתמש הזין
+// לתעודה גובר עליה: תעודה מיום אחר נבדקת מול המבצע שהיה בתוקף באותו יום,
+// ולא מול מה שפעיל היום. עם שורה בידיים מוחזר היום של התעודה שאליה היא
+// שייכת — כך שתי תעודות בתאריכים שונים באותה קליטה אינן נבדקות לפי יום אחד.
+// בלי שורה מוחזר היום המשותף לקליטה, בדיוק כפי שמנוע ההשוואה מכריע.
+function receiptPromoDay(row) {
+  if (row && typeof row === 'object') {
+    const docs = (aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents) || [];
+    const owner = docs.find(doc => Array.isArray(doc && doc.rows) && doc.rows.indexOf(row) !== -1)
+      || docs.find(doc => doc && doc.__pricePaper && Array.isArray(doc.__pricePaper.rows) && doc.__pricePaper.rows.indexOf(row) !== -1);
+    const day = owner ? priceAuditDocumentDay(owner) : null;
+    if (day) return day;
+  }
+  return priceAuditPromoDay() || todayStr();
+}
 function receiptPriceAudit() {
   const docs = aiScanResponse && aiScanResponse.scan && aiScanResponse.scan.documents || [];
   const out = { version: 1, supplier: PRICE_AUDIT_SUPPLIER, documents: [], rows: [], complete: false, state: 'empty' };
@@ -10952,8 +10970,10 @@ function aiPriceCorroborates(row, qty, cents, product) {
   const effective = aiRowEffectiveUnitCents(row, qty, cents);
   if (effective == null) return false;
   const options = [aiMoneyCents(base)];
-  const pr = promoForProduct(product.id, todayStr());
-  if (promoActive(pr, todayStr())) options.push(aiMoneyCents(discountedUnitPrice(base, Number(pr.pct) || 0)));
+  // המבצע נבחר לפי יום התעודה שאליה השורה שייכת, לא לפי היום.
+  const day = receiptPromoDay(row);
+  const pr = promoForProduct(product.id, day);
+  if (promoActive(pr, day)) options.push(aiMoneyCents(discountedUnitPrice(base, Number(pr.pct) || 0)));
   return options.some(option => option != null && Math.abs(option - effective) <= 2);
 }
 function aiRemainingReceived(productId, aggregates) {
@@ -12932,7 +12952,9 @@ function aiApplyInvoiceResult() {
     // v272: אותו כלל שהמעריך פסק לפיו — המינימום נמדד על הכמות שבנייר.
     // promoTriggered מדד את הסל החי, ולכן חוסר שהפיל אותו מתחת למינימום
     // סימן את השורה "בלי מבצע" בזמן שמחיר הנייר שנכתב לתוכה הוא מחיר מבצע.
-    const base = r2(Number(a.product.price) || 0), pr = promoForProduct(a.product.id, todayStr()), on = aiBilledPromoTriggered(pr, ev.aggregates, todayStr()), pct = on ? (Number(pr.pct) || 0) : 0;
+    // אותו יום שהמעריך פסק לפיו — תאריך התעודה כפי שהוזן, לא היום.
+    const promoDay = receiptPromoDay();
+    const base = r2(Number(a.product.price) || 0), pr = promoForProduct(a.product.id, promoDay), on = aiBilledPromoTriggered(pr, ev.aggregates, promoDay), pct = on ? (Number(pr.pct) || 0) : 0;
     if (!line) { line = { productId: a.product.id, name: a.product.name, barcode: a.product.barcode || '', received: 0, noteQty: 0, price: a.paperUnitPrice, basePrice: base, promoPct: pct, promoOn: on, checked: true }; reconcileData.unshift(line); }
     line.noteQty = a.qty; line.price = a.paperUnitPrice; line.basePrice = base; line.promoPct = pct; line.promoOn = on; line.checked = true; line.aiPaperPriceOnly = true;
   });
