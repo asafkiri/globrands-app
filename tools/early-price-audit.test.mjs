@@ -265,6 +265,84 @@ if(supplier==='yotvata'){
   assert.equal(r.choice,null);
   assert.equal(requests(c),1);
  });
+ test('yotvata: lines built during reconciliation follow the typed document date',async()=>{
+  // ensureReconcileLine stamps promoOn/promoPct/basePrice onto a fabricated
+  // line, and those stamps later decide whether the catalog price is rewritten.
+  const data=fixture({unit:5,promo:{start:'2026-09-01',end:'2026-09-30',pct:20}}),c=create(data);
+  await scan(c,data,{completeDate:false});
+  c.run("receiptList=[{productId:'milk',name:'מוצר בדיקה',barcode:'7290000000008',qty:10}];reconcileData=[]");
+  // Default is the receiving day, which is inside the promotion window.
+  assert.equal(c.run('receiptPromoDay()'),c.run('todayStr()'));
+  assert.equal(c.run("ensureReconcileLine('milk').promoOn"),true);
+  // The user says the note predates the promotion. The line must be built at
+  // the full price, or the catalog write-back would bank the wrong figure.
+  c.run("priceAuditSetDate(0,'2026-08-31');reconcileData=[]");
+  assert.equal(c.run('receiptPromoDay()'),'2026-08-31');
+  assert.equal(c.run("ensureReconcileLine('milk').promoOn"),false);
+  assert.equal(c.run("ensureReconcileLine('milk').price"),5);
+  assert.equal(requests(c),1);
+ });
+ // ===== שם מודפס שמתאים לכמה מוצרים =====
+ // מצב אחר שנתקע בדיוק כמו קונפליקט הברקוד: השרת מחזיר מועמדים, אבל שום
+ // מסך לא צייר אותם — והתעודה נשארה נעולה לסגירה בלי דרך להשתחרר.
+ const nameRow=over=>({section:'items',description:'מוצר בדיקה',barcode:null,barcodeReadType:'unreadable',
+  barcodeObserved:null,barcodeMatchMethod:'suggested_name_multiple',
+  catalogHintId:null,catalogCandidateHintIds:['milk','coffee'],
+  barcodeSuggestedCandidates:[{productId:'milk',barcode:'7290000000008'},{productId:'coffee',barcode:'7290000000015'}],
+  sourcePage:1,lineNumber:1,quantity:6,lineDiscountExVat:0,confidence:.82,...over});
+ test('yotvata: an ambiguous printed name is put to the user instead of locking the document',async()=>{
+  const data=fixture({rows:[priced(nameRow(),9)]}),c=create(data);
+  const html=await scan(c,data,{completeDate:false});
+  const r=report(c).rows[0];
+  assert.equal(r.capability,'unidentified');
+  assert.equal(r.choice.kind,'name');
+  assert.match(r.reason,/השם המודפס מתאים לכמה מוצרים/);
+  assert.match(html,/הברקוד לא נקרא, והשם המודפס מתאים לכמה מוצרים/);
+  assert.match(html,/data-role="ai-confirm-name-candidate"[^>]*data-candidate-id="milk"/);
+  assert.match(html,/data-role="ai-confirm-name-candidate"[^>]*data-candidate-id="coffee"/);
+  // Until it is answered the scan stays invalid — that is what locked the note.
+  c.run('aiScanEvaluation=aiEvaluateInvoiceScan(aiScanResponse)');
+  assert.equal(c.run('aiScanEvaluation.barcodeSuggestions.length'),1);
+  assert.equal(c.run('aiScanEvaluation.valid'),false);
+  // Answering it clears the block without another scan.
+  assert.equal(c.run("aiConfirmNameCandidate(0,0,'coffee')"),true);
+  assert.equal(c.run('aiScanEvaluation.barcodeSuggestions.length'),0);
+  assert.equal(c.run("aiScanEvaluation.aggregates.get('coffee').qty"),6);
+  const after=report(c).rows[0];
+  assert.equal(after.capability,'checkable');
+  assert.equal(after.productId,'coffee');
+  assert.equal(after.result,'difference'); // paper 9 against a catalog 5
+  assert.equal(after.choice,null);
+  assert.doesNotMatch(view(c),/בחר לפי הנייר/);
+  assert.equal(requests(c),1);
+  // And it survives a reload, like any other confirmed identity.
+  c.run('saveReceiptDraft()');
+  const b=reload(c,data);b.run("currentView='receiving';mainMode='receiving'");
+  assert.equal(report(b).rows[0].productId,'coffee');
+  assert.equal(requests(b),0);
+ });
+ test('yotvata: a coin-flip between equally priced names still offers the correction',async()=>{
+  // Both candidates cost 5, so the existing automatic resolution takes the first
+  // one and the note is NOT blocked — the money is identical either way. But
+  // which product entered stock is still a guess, and the price audit cannot
+  // verify a price against an identity it did not prove. The choice stays
+  // available so the guess can be corrected; it just is not urgent.
+  const data=fixture({rows:[priced(nameRow(),5)]}),c=create(data);
+  const html=await scan(c,data,{completeDate:false});
+  c.run('aiScanEvaluation=aiEvaluateInvoiceScan(aiScanResponse)');
+  assert.equal(c.run('aiScanEvaluation.barcodeSuggestions.length'),0);
+  assert.equal(c.run("aiScanEvaluation.aggregates.get('milk').qty"),6);
+  assert.equal(report(c).rows[0].capability,'unidentified');
+  assert.match(html,/data-role="ai-confirm-name-candidate"[^>]*data-candidate-id="coffee"/);
+  // Correcting it moves the units and makes the price checkable.
+  assert.equal(c.run("aiConfirmNameCandidate(0,0,'coffee')"),true);
+  assert.equal(c.run("aiScanEvaluation.aggregates.has('milk')"),false);
+  assert.equal(c.run("aiScanEvaluation.aggregates.get('coffee').qty"),6);
+  const after=report(c).rows[0];
+  assert.equal(after.capability,'checkable');
+  assert.equal(after.result,'match');
+  assert.equal(requests(c),1);
+ });
  test('yotvata: row discount and summary already included are not applied twice',async()=>{
   const data=fixture({promo:{},summary:10}),d=data.paper.scan.documents[0];Object.assign(d.rows[0],{lineTotalExVat:40,lineDiscountExVat:10});
   const c=create(data);await scan(c,data);assert.equal(report(c).rows[0].chargedUnitPrice,4);assert.equal(report(c).rows[0].result,'match');assert.match(view(c),/לא הופחתה שוב/);assert.equal(requests(c),1);

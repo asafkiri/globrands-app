@@ -7364,7 +7364,7 @@ function finishReceipt() {
 function hideReceiptSummary() { const m = $('receiptSummaryModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
 // ===== מסך השוואת תעודה (חוסר/עודף) =====
 function openReconcile() {
-  const day = activeReceiptDate();
+  const day = receiptPromoDay();
   reconcileData = receiptList.map(it => {
     const p = products.find(x => x.id === it.productId);
     const base = r2(Number(p && p.price) || 0);
@@ -7948,7 +7948,7 @@ function detectiveSolveTier(groups, gap, gapCents, unitGap, toleranceCents, sear
   return triples.length ? detectiveFinishStage(triples, gap, unitGap, 3, toleranceCents, true, searchStage) : null;
 }
 function detectivePromoFlipSolve(gap, unitGap) {
-  const day = todayStr();
+  const day = receiptPromoDay();
   for (const pr of promos) {
     if (!pr || pr.type === 'monthEnd' || !promoActive(pr, day)) continue;
     const ids = pr.productIds || [];
@@ -8093,7 +8093,7 @@ function ensureReconcileLine(pid) {
   let l = (reconcileData || []).find(x => x.productId === pid);
   if (l) return l;
   const p = products.find(x => x.id === pid); if (!p) return null;
-  const day = todayStr();
+  const day = receiptPromoDay();
   const base = r2(Number(p.price) || 0);
   const pr = promoForProduct(p.id, day);
   const on = promoTriggered(pr, day);
@@ -8412,7 +8412,6 @@ async function manualApplyProduct(pid) {
 }
 // שורות "מה שנסרק" — מחיר חי + סימון מבצע שהספק לא כיבד
 function manualScannedRowsHtml() {
-  const day = todayStr();
   const lines = (reconcileData || []).filter(l => (Number(l.received) || 0) > 0);
   if (!lines.length) return '<div class="text-center text-sm text-slate-400 font-bold py-3">אין שורות שנסרקו</div>';
   return lines.map(l => {
@@ -9892,18 +9891,24 @@ function priceAuditPriceAssistedIdentity(mapped) {
 function aiRowChoiceCandidates(row) {
   return aiConflictChoiceRow(row) ? aiConflictReadCandidates(row) : aiLocalSuggestedNameCandidates(row);
 }
+// שני מצבים שונים מגיעים לאותה התלבטות: שתי קריאות ברקוד שנחלקו, ושם
+// מודפס שמתאים לכמה מוצרים במאגר. בשניהם aiResolveInvoiceBarcode כבר
+// מחזיר את המועמדים החוקיים, וכאן הם רק מולבשים לתצוגה. שורה שההכרעה
+// האוטומטית סגרה — גם אם נשענה על המחיר ולכן אינה מאשרת אותו — אינה
+// שאלה למשתמש, ולכן אין לה suggestion ואין לה בחירה.
 function priceAuditChoice(mapped, docIndex, rowIndex) {
-  if (!aiConflictChoiceRow(mapped)) return null;
-  // בחירה מוצגת רק כשההכרעה האוטומטית באמת לא סגרה את השורה. שורה שהוכרעה
-  // — גם אם ההכרעה נשענה על המחיר ולכן אינה מאשרת אותו — אינה שאלה למשתמש.
-  const resolution = aiConflictResolution(mapped);
-  const candidates = resolution && Array.isArray(resolution.candidates) ? resolution.candidates : [];
+  const resolution = mapped ? aiResolveInvoiceBarcode(mapped) : null;
+  const suggestion = resolution && resolution.suggestion;
+  if (!suggestion || suggestion.multipleName !== true) return null;
+  const candidates = (Array.isArray(suggestion.candidates) ? suggestion.candidates : [])
+    .filter(item => item && item.product && item.barcode);
   if (candidates.length < 2) return null;
   const qtyRaw = mapped.quantity == null || mapped.quantity === '' ? NaN : Number(mapped.quantity);
   const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : null;
   const cents = aiMoneyCents(mapped.lineTotalExVat);
   return {
     docIndex, rowIndex,
+    kind: suggestion.barcodeConflict === true ? 'barcode' : 'name',
     candidates: candidates.map(item => ({
       productId: String(item.product.id),
       productName: String(item.product.name || ''),
@@ -9927,8 +9932,10 @@ function priceAuditDocumentComplete(doc, raw, input) {
 }
 // The day a promotion is judged by. The local review and the comparison engine
 // both read it here, so the two can never answer the same question with two
-// different dates. The paper's own date comes first; the field typed by hand is
-// only a fallback, because the photo flow usually leaves it empty.
+// different dates. The date a person typed for this document comes FIRST: the
+// OCR date is a reading, the typed one is an assertion, and a person looking at
+// the paper outranks a reading of it. The paper's own date is next, and the
+// hand-typed receipt date last — in the photo flow that field stays empty.
 function priceAuditDocumentDay(doc, source) {
   const paper = source === undefined ? (doc && Array.isArray(doc.rows) ? priceAuditSource(doc) : null) : source;
   return priceAuditDate((doc && doc.__priceConfirmedDate) || (paper && paper.docDate) || (typeof receiptDocDate !== 'undefined' && receiptDocDate));
@@ -9998,7 +10005,9 @@ function receiptPriceAudit() {
         row.reason = priceAuditPriceAssistedIdentity(mapped)
           ? 'המוצר הוכרע לפי השם והמחיר, ולכן אי אפשר לאשר בעזרתו את המחיר עצמו'
           : row.choice
-            ? 'שתי קריאות של הברקוד החזירו ספרות שונות — בחר לפי הנייר איזה מוצר מופיע בשורה'
+            ? (row.choice.kind === 'barcode'
+              ? 'שתי קריאות של הברקוד החזירו ספרות שונות — בחר לפי הנייר איזה מוצר מופיע בשורה'
+              : 'הברקוד לא נקרא, והשם המודפס מתאים לכמה מוצרים במאגר — בחר לפי הנייר איזה מוצר מופיע בשורה')
             : 'המוצר לא זוהה בוודאות לפי קוד או ברקוד; יש לאשר את ההתאמה';
       }
       else if (!(row.catalogBasePrice > 0)) { row.capability = 'missing_catalog_price'; row.reason = 'חסר מחיר במאגר'; }
@@ -10131,8 +10140,11 @@ function priceAuditChoiceHtml(r) {
   const buttons = c.candidates.map(candidate => '<button data-role="ai-confirm-name-candidate" data-doc="' + c.docIndex + '" data-row="' + c.rowIndex + '" data-candidate-id="' + htmlEscape(candidate.productId) + '" class="btn-tap w-full flex items-center justify-between gap-2 rounded-lg border-2 ' + (candidate.priceMatches ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white') + ' px-3 py-2.5 text-right mt-1.5">' +
     '<span class="min-w-0"><span class="block font-black text-slate-800">' + htmlEscape(candidate.productName) + '</span><span class="block text-[10px] font-bold text-slate-500" dir="ltr">' + htmlEscape(candidate.barcode) + '</span></span>' +
     '<span class="shrink-0 text-xs font-black ' + (candidate.priceMatches ? 'text-emerald-700' : 'text-slate-500') + '">' + money(candidate.price) + (candidate.priceMatches ? '<span class="block text-[10px]">תואם למחיר בשורה</span>' : '') + '</span></button>').join('');
+  const head = c.kind === 'barcode'
+    ? '<i class="fa-solid fa-code-branch ml-1"></i>שתי קריאות של הברקוד החזירו ספרות שונות — בדוק בנייר איזה מוצר בשורה'
+    : '<i class="fa-solid fa-list-check ml-1"></i>הברקוד לא נקרא, והשם המודפס מתאים לכמה מוצרים — בדוק בנייר איזה מוצר בשורה';
   return '<div class="mt-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-2.5">' +
-    '<div class="font-black text-amber-900 text-xs"><i class="fa-solid fa-code-branch ml-1"></i>שתי קריאות של הברקוד החזירו ספרות שונות — בדוק בנייר איזה מוצר בשורה</div>' +
+    '<div class="font-black text-amber-900 text-xs">' + head + '</div>' +
     '<div class="text-[11px] font-bold text-amber-800 mt-1">' + htmlEscape(paper) + '</div>' + buttons + '</div>';
 }
 function receiptPriceAuditHtml(report) {
@@ -11577,13 +11589,16 @@ function aiEvaluateInvoiceScan(payload) {
   // v178: אין "סל שלם" בלי שכל התעודות חזרו עם שורות. "עודף" הוא מסקנה
   // מהיעדר שורה בנייר — ותעודה שלא נקראה היא היעדר שורות שאינו ראיה לכלום.
   const basketComplete = allRowsMapped && unusableRows === 0 && missingDocuments === 0 && returned.size === aiScanDocuments.length;
+  // היום נגזר פעם אחת ונחשף בתוצאה, כדי שכל צרכן במורד הזרם — ההחלה,
+  // המנתח ודרישת הזיכוי — ישתמש בדיוק באותו יום ולא יגזור אותו מחדש.
+  const promoDay = priceAuditPromoDay();
   if (aggregates.size > 0) {
     // תוקף המבצע נקבע לפי תאריך התעודה, כמו בבדיקת המחירים ובמסך ההשוואה.
     // עד כאן נבדק לפי היום, ולכן תעודה מתאריך קודם נשפטה מול מבצעי היום
     // ודרישת הזיכוי מהספק נבנתה על מחיר צפוי שגוי. activeReceiptDate() מכיר רק
     // את התאריך שהוקלד ביד, ובמסלול הצילום השדה הזה נשאר ריק — ולכן התאריך
     // נקרא מאותו מקור שממנו קוראת בדיקת המחירים.
-    const day = priceAuditPromoDay();
+    const day = promoDay;
     const paperPromoTriggered = pr => aiBilledPromoTriggered(pr, aggregates, day);
     // v272: מחיר הסחורה שהתקבלה, מתוקן לפי המבצע שהנייר מוכיח שחויב. שורה
     // שנשארה במחיר מלא רק מפני שהחוסר עצמו שחק את הסל מתומחרת מחדש כאן —
@@ -11667,7 +11682,7 @@ function aiEvaluateInvoiceScan(payload) {
   const uniqueWarnings = Array.from(new Set(warnings.concat(Array.isArray(scan.warnings) ? scan.warnings : [])));
   // v272: unitsAnchorless הוא בדיוק ההקלה של v270 — תעודה שאין בה שום עוגן
   // כמות עדיין ניתנת להחלה. מה שהשתנה: היא כבר לא מתחזה ל"מאומתת".
-  return { valid: uniqueErrors.length === 0 && barcodeSuggestions.length === 0 && findingsReady && aggregates.size > 0 && totalVerified && (unitsVerified || unitsAnchorless) && closure.ok, totalVerified, unitsVerified, unitsAnchorless, closure, errors: uniqueErrors, warnings: uniqueWarnings, findings, barcodeSuggestions, allRowsMapped, findingsReady, basketComplete, missingDocuments, residuals, autoResolutions, aggregates, receivedUnitPrices, docSummaries, extractedTotal: extractedTotalCents / 100, extractedUnits, rowTotal: rowTotalCents / 100, supplierDiscount, depositRows };
+  return { promoDay, valid: uniqueErrors.length === 0 && barcodeSuggestions.length === 0 && findingsReady && aggregates.size > 0 && totalVerified && (unitsVerified || unitsAnchorless) && closure.ok, totalVerified, unitsVerified, unitsAnchorless, closure, errors: uniqueErrors, warnings: uniqueWarnings, findings, barcodeSuggestions, allRowsMapped, findingsReady, basketComplete, missingDocuments, residuals, autoResolutions, aggregates, receivedUnitPrices, docSummaries, extractedTotal: extractedTotalCents / 100, extractedUnits, rowTotal: rowTotalCents / 100, supplierDiscount, depositRows };
 }
 function aiRotationRetryDocumentIndexes(evaluation) {
   if (!evaluation || !Array.isArray(evaluation.docSummaries)) return [];
@@ -12096,7 +12111,10 @@ function aiAnalyzePaperDocuments(ev) {
 // אפס אמיתי (יחידות שנסגרו בדיוק) עובר כרגיל.
 function analyzeUnitsField(value) { return value == null ? undefined : Number(value); }
 function aiAnalyzePayload(ev) {
-  const day = todayStr();
+  // רשימת המבצעים שנשלחת למודל חייבת להיבחר לפי אותו יום שהמחירים שנשלחים
+  // לצדה חושבו לפיו. רשימה של היום לצד מחירים של יום התעודה היא בדיוק
+  // המשוואה שלא נסגרת, והמודל סוגר אותה בהמצאת חוסרים.
+  const day = (ev && ev.promoDay) || receiptPromoDay();
   const closure = aiFindingsClosure(ev, Array.isArray(ev && ev.findings) ? ev.findings : []);
   return {
     mode: 'analyze',
@@ -12947,13 +12965,13 @@ function aiApplyInvoiceResult() {
   reconcileData = (reconcileData || []).filter(l => !l.isDeposit && String(l.productId || '').indexOf('deposit-') !== 0);
   reconcileData.forEach(l => { l.noteQty = 0; l.aiPaperPriceOnly = false; });
   reconcilePaperEntered = true; // v178: מכאן noteQty באמת מגיע מהנייר
+  const promoDay = (ev && ev.promoDay) || receiptPromoDay();
   ev.aggregates.forEach(a => {
     let line = (reconcileData || []).find(l => l.productId === a.product.id);
     // v272: אותו כלל שהמעריך פסק לפיו — המינימום נמדד על הכמות שבנייר.
     // promoTriggered מדד את הסל החי, ולכן חוסר שהפיל אותו מתחת למינימום
     // סימן את השורה "בלי מבצע" בזמן שמחיר הנייר שנכתב לתוכה הוא מחיר מבצע.
     // אותו יום שהמעריך פסק לפיו — תאריך התעודה כפי שהוזן, לא היום.
-    const promoDay = receiptPromoDay();
     const base = r2(Number(a.product.price) || 0), pr = promoForProduct(a.product.id, promoDay), on = aiBilledPromoTriggered(pr, ev.aggregates, promoDay), pct = on ? (Number(pr.pct) || 0) : 0;
     if (!line) { line = { productId: a.product.id, name: a.product.name, barcode: a.product.barcode || '', received: 0, noteQty: 0, price: a.paperUnitPrice, basePrice: base, promoPct: pct, promoOn: on, checked: true }; reconcileData.unshift(line); }
     line.noteQty = a.qty; line.price = a.paperUnitPrice; line.basePrice = base; line.promoPct = pct; line.promoOn = on; line.checked = true; line.aiPaperPriceOnly = true;
@@ -13353,14 +13371,15 @@ function ncPriceRowsHtml() {
 function ncPromoRowsHtml() {
   const rows = ncPaperRows();
   if (!rows.length) return '<div class="text-center text-slate-400 py-4 text-sm font-bold">אין שורות מזוהות מהנייר.</div>';
+  const day = receiptPromoDay();
   return rows.map((r, idx) => {
     const p = products.find(x => x.id === r.pid);
     const l = (reconcileData || []).find(x => x.productId === r.pid);
-    const pr = promoForProduct(r.pid);
+    const pr = promoForProduct(r.pid, day);
     const q = rowNoteQtyForPromo(r);
     const occ = ncOccurrenceMeta(r);
     const occTxt = occ.total > 1 ? ' · הופעה ' + occ.number + ' מתוך ' + occ.total : '';
-    const configured = pr && promoActive(pr, todayStr()) ? (' · מוגדר במערכת: ' + (Number(pr.pct) || 0) + '%') : '';
+    const configured = pr && promoActive(pr, day) ? (' · מוגדר במערכת: ' + (Number(pr.pct) || 0) + '%') : '';
     return '<label class="btn-tap flex items-center gap-3 bg-slate-50 border ' + (r.promoMark ? 'border-rose-300 bg-rose-50' : 'border-slate-100') + ' rounded-xl p-3">' +
       '<input data-role="nc-promo-mark" data-i="' + noteCheckRows.indexOf(r) + '" type="checkbox" ' + (r.promoMark ? 'checked' : '') + ' class="w-6 h-6 accent-rose-600">' +
       '<div class="flex-1 min-w-0"><div class="font-black text-slate-700 text-sm truncate">' + (p ? p.name : '') + occTxt + '</div><div class="text-[11px] text-slate-400">כמות: ' + (q || '—') + ' · מחיר: ₪' + fmtMoney(Number(l && l.price) || Number(p && p.price) || 0) + configured + '</div></div>' +
@@ -13394,7 +13413,7 @@ function applyNotePricesFromInputs() {
   return changed;
 }
 function configuredDiscountForMarked(marked) {
-  const groups = {}; const day = todayStr();
+  const groups = {}; const day = receiptPromoDay();
   marked.forEach(row => {
     const pr = promoForProduct(row.pid, day);
     if (!pr || !promoActive(pr, day)) return;
@@ -13446,7 +13465,7 @@ function supplierPromoItemsFromRows(rows) {
   return Array.from(byPid.values()).map(x => ({ ...x, qty: r2(x.qty) }));
 }
 function configuredDiscountForRows(rows) {
-  const groups = {}; const day = todayStr();
+  const groups = {}; const day = receiptPromoDay();
   (rows || []).forEach(row => {
     const pr = promoForProduct(row.pid, day);
     if (!pr || !promoActive(pr, day)) return;
@@ -13465,7 +13484,7 @@ function configuredDiscountForRows(rows) {
   return { total: r2(total), details };
 }
 function configuredPromoRowsInPaper() {
-  const day = todayStr();
+  const day = receiptPromoDay();
   return ncPaperRows().filter(row => {
     const pr = promoForProduct(row.pid, day);
     return !!(pr && promoActive(pr, day) && (Number(pr.pct) || 0) > 0);
@@ -13473,13 +13492,16 @@ function configuredPromoRowsInPaper() {
 }
 function buildPromoMismatchItems(rows) {
   const byPid = new Map();
+  // promoForProduct מחזיר מבצע גם כשאף אחד אינו בתוקף, ולכן בלי בדיקת תוקף
+  // מפורשת נדרש כאן זיכוי על מבצע שלא היה קיים ביום התעודה.
+  const day = receiptPromoDay();
   (rows || []).forEach(row => {
     const p = products.find(x => x.id === row.pid);
-    const pr = promoForProduct(row.pid);
+    const pr = promoForProduct(row.pid, day);
     const qty = rowNoteQtyForPromo(row);
     const price = rowUnitPriceForPromo(row);
     const pct = Number(pr && pr.pct) || 0;
-    if (row.pid == null || qty <= 0 || pct <= 0) return;
+    if (row.pid == null || qty <= 0 || pct <= 0 || !promoActive(pr, day)) return;
     let x = byPid.get(row.pid);
     if (!x) {
       x = { productId: row.pid, name: p ? p.name : '', qty: 0, unitPrice: r2(price), promoPct: pct };
@@ -19725,7 +19747,7 @@ app.addEventListener('click', (e) => {
   else if (role === 'nc-compare') { noteCheckRes = ncCompute(); if (currentView === 'reconcile') renderReconcile(); }
   else if (role === 'nc-apply-certain') {
     const sol = solveMissingCertain(); if (!sol) return;
-    const day = todayStr();
+    const day = receiptPromoDay();
     (sol.extra || []).forEach(x => { const l = (reconcileData || []).find(y => y.productId === x.productId); if (l) l.noteQty = 0; });
     Object.keys(sol.missing).forEach(pid => {
       let l = (reconcileData || []).find(x => x.productId === pid);
@@ -19767,7 +19789,7 @@ app.addEventListener('click', (e) => {
     const res = ncCompute();
     res.missing.forEach(p => {
       if (!(reconcileData || []).find(l => l.productId === p.id)) {
-        const day = todayStr(); const base = r2(Number(p.price) || 0);
+        const day = receiptPromoDay(); const base = r2(Number(p.price) || 0);
         const pr = promoForProduct(p.id, day); const on = promoTriggered(pr, day); const pct = on ? (Number(pr.pct) || 0) : 0;
         reconcileData.unshift({ productId: p.id, name: p.name, barcode: p.barcode || '', received: 0, noteQty: 0, price: (on ? discountedUnitPrice(base, pct) : base), basePrice: base, promoPct: pct, promoOn: on, checked: false });
       }
@@ -19778,7 +19800,7 @@ app.addEventListener('click', (e) => {
   else if (role === 'rc-qty-price') { /* handled in input */ }
   else if (role === 'nc-qty-mode') { noteCheckQtyMode = true; if (currentView === 'reconcile') renderReconcile(); }
   else if (role === 'nc-qty-apply') {
-    const day = todayStr();
+    const day = receiptPromoDay();
     const box = $('ncRows');
     const totals = ncQuantityTotals(box);
     totals.forEach((q, pid) => {
@@ -19860,7 +19882,7 @@ app.addEventListener('click', (e) => {
   else if (role === 'nc-add-missing') {
     const p = products.find(x => x.id === id);
     if (p && !(reconcileData || []).find(l => l.productId === id)) {
-      const day = todayStr();
+      const day = receiptPromoDay();
       const base = r2(Number(p.price) || 0);
       const pr = promoForProduct(p.id, day);
       const on = promoTriggered(pr, day);
