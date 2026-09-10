@@ -9871,7 +9871,44 @@ function priceAuditIdentity(mapped, raw) {
   // Price-assisted identity repairs cannot independently prove a price.
   if (/repair|name_price/.test(String(mapped.barcodeMatchMethod || ''))) return null;
   const resolved = aiResolveInvoiceBarcode(mapped);
+  // אותו כלל חל על הכרעת קונפליקט ברקוד שנשענה על המחיר: זהות שנבחרה לפי
+  // המחיר אינה יכולה לשמש כדי לאשר את אותו מחיר. הכרעה שנשענה על ספרות
+  // או על השם המודפס אינה מסומנת כך, ולכן היא כן נבדקת.
+  if (resolved && resolved.priceAssisted === true) return null;
   return resolved && resolved.product || null;
+}
+// זהות שנקבעה בעזרת המחיר אינה "לא זוהה": היא ידועה, ורק אינה יכולה לאשר
+// את המחיר. ההפרדה נחוצה כדי שהשורה תסביר את עצמה במקום להיראות ככשל זיהוי.
+function priceAuditPriceAssistedIdentity(mapped) {
+  if (!mapped || /repair|name_price/.test(String(mapped.barcodeMatchMethod || ''))) return false;
+  const resolved = aiResolveInvoiceBarcode(mapped);
+  return !!(resolved && resolved.product && resolved.priceAssisted === true);
+}
+// המועמדים שמוצגים למשתמש לבחירה בשורה. שורת קונפליקט ברקוד גוזרת אותם
+// מהקריאות עצמן; שורת שם עמום גוזרת אותם מרשימת המועמדים של השרת.
+function aiRowChoiceCandidates(row) {
+  return aiConflictChoiceRow(row) ? aiConflictReadCandidates(row) : aiLocalSuggestedNameCandidates(row);
+}
+function priceAuditChoice(mapped, docIndex, rowIndex) {
+  if (!aiConflictChoiceRow(mapped)) return null;
+  // בחירה מוצגת רק כשההכרעה האוטומטית באמת לא סגרה את השורה. שורה שהוכרעה
+  // — גם אם ההכרעה נשענה על המחיר ולכן אינה מאשרת אותו — אינה שאלה למשתמש.
+  const resolution = aiConflictResolution(mapped);
+  const candidates = resolution && Array.isArray(resolution.candidates) ? resolution.candidates : [];
+  if (candidates.length < 2) return null;
+  const qtyRaw = mapped.quantity == null || mapped.quantity === '' ? NaN : Number(mapped.quantity);
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : null;
+  const cents = aiMoneyCents(mapped.lineTotalExVat);
+  return {
+    docIndex, rowIndex,
+    candidates: candidates.map(item => ({
+      productId: String(item.product.id),
+      productName: String(item.product.name || ''),
+      barcode: item.barcode,
+      price: Number(item.product.price) || null,
+      priceMatches: qty != null && aiPriceCorroborates(mapped, qty, cents, item.product)
+    }))
+  };
 }
 function priceAuditDocumentComplete(doc, raw, input) {
   const rows = raw && raw.rows || [], pages = input && ((input.pages || []).length || input.restoredPageCount || input.savedPageCount);
@@ -9933,9 +9970,19 @@ function receiptPriceAudit() {
         catalogBasePrice: product ? priceAuditNumber(PRICE_AUDIT_SUPPLIER === 'berman' ? product.listPrice : product.price) : null,
         regularDiscountPct: PRICE_AUDIT_SUPPLIER === 'berman' && product ? priceAuditNumber(product.discountPct) : 0,
         promo: null, expectedOptions: [], comparisonPrice: null, comparisonBasis: 'ללא מע״מ; פיקדון נבדק בשורה נפרדת',
-        capability: 'checkable', result: null, reason: '', monthlyStatus: null };
+        capability: 'checkable', result: null, reason: '', monthlyStatus: null, choice: null };
       if (!source) { row.capability = 'partial'; row.reason = 'חסר מקור שמור למחיר מהנייר; המחיר המותאם אינו ראיה למחיר המקורי'; }
-      else if (!product) { row.capability = 'unidentified'; row.reason = 'המוצר לא זוהה בוודאות לפי קוד או ברקוד; יש לאשר את ההתאמה'; }
+      else if (!product) {
+        row.capability = 'unidentified';
+        row.choice = priceAuditChoice(mapped, doc.noteIndex, index);
+        // שורה שההכרעה בה נכשלה בין שתי קריאות ברקוד אינה "זיהוי לא ודאי"
+        // סתמי: יש בדיוק מועמדים ידועים, והמשתמש יכול להכריע מול הנייר.
+        row.reason = priceAuditPriceAssistedIdentity(mapped)
+          ? 'המוצר הוכרע לפי השם והמחיר, ולכן אי אפשר לאשר בעזרתו את המחיר עצמו'
+          : row.choice
+            ? 'שתי קריאות של הברקוד החזירו ספרות שונות — בחר לפי הנייר איזה מוצר מופיע בשורה'
+            : 'המוצר לא זוהה בוודאות לפי קוד או ברקוד; יש לאשר את ההתאמה';
+      }
       else if (!(row.catalogBasePrice > 0)) { row.capability = 'missing_catalog_price'; row.reason = 'חסר מחיר במאגר'; }
       else if (original == null && priceAuditNumber(raw.lineTotalExVat) == null) { row.capability = 'partial'; row.reason = 'לא נקרא מחיר יחידה או סכום שורה'; }
       else if (qty == null || qty <= 0) { row.capability = 'partial'; row.reason = 'חסרה כמות תקינה בתעודה'; }
@@ -10025,6 +10072,51 @@ function receiptPriceAudit() {
   out.complete = allComplete && out.rows.length > 0 && out.rows.every(r => r.capability === 'checkable');
   return out;
 }
+// שירות הפענוח אינו מחזיר תאריך תעודה. עד כאן כל קליטה קיבלה על כך שתי
+// שורות אזהרה כתומות ("תאריך משוער") — אחת לכל תעודה, בלי מספר התעודה
+// בשורה המקופלת, ולכן הן נראו ככפילות ולא אפשרו לדעת איזו תעודה מעדכנים.
+// כשל קריאת תאריך אינו ממצא למשתמש: ברירת המחדל היא יום הקליטה, בשקט,
+// בלי אזהרה ובלי פענוח נוסף. השדה נשאר פתוח לעריכה, כי תעודה מיום אחר
+// עשויה להיבדק מול מבצע אחר.
+function priceAuditDatesHtml(a, money) {
+  const docs = Array.isArray(a && a.documents) ? a.documents : [];
+  if (!docs.length) return '';
+  const name = d => htmlEscape(d.number || String(d.index + 1));
+  const field = d => '<label class="block mt-2 font-bold">תאריך התעודה ' + name(d) +
+    '<input type="date" data-role="price-doc-date" data-doc="' + d.index + '" value="' + htmlEscape(d.date || '') + '" class="block w-full border rounded-lg p-2 mt-1" aria-label="תאריך התעודה לבדיקת מחירים"></label>';
+  const discount = d => d.summaryDiscount
+    ? '<div class="mt-2 text-xs">הנחה בסיכום תעודה ' + name(d) + ': ' + money(d.summaryDiscount) + ' · ' + htmlEscape(d.summaryStatus) + '</div>'
+    : '';
+  // תעודה שנשארה בלי יום כלל אינה ניתנת להשוואה מול מבצע, ולכן היא נשארת
+  // שדה פתוח ומפורש. זה אינו המצב של יטבתה, שבו תמיד קיימת ברירת מחדל.
+  const missing = docs.filter(d => !d.date).map(d => '<label class="block mt-2 font-bold">השלם תאריך לתעודה ' + name(d) +
+    '<input type="date" data-role="price-doc-date" data-doc="' + d.index + '" value="" class="block w-full border rounded-lg p-2 mt-1" aria-label="תאריך התעודה לבדיקת מחירים"></label>' + discount(d)).join('');
+  const dated = docs.filter(d => d.date);
+  if (!dated.length) return missing;
+  const sameDay = dated.every(d => d.date === dated[0].date);
+  const head = sameDay
+    ? (dated.length > 1 ? 'תאריך התעודות: ' : 'תאריך התעודה: ') + htmlEscape(dDisp(dated[0].date))
+    : 'תאריכי התעודות: ' + dated.map(d => name(d) + ' — ' + htmlEscape(dDisp(d.date))).join(' · ');
+  return '<details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-slate-600">' + head + ' · עריכה</summary>' +
+    dated.map(d => field(d) + discount(d)).join('') + '</details>' + missing;
+}
+// הבחירה מוצגת מעל הקיפול, כי היא הדבר היחיד בפאנל שהמשתמש יכול לפעול
+// לפיו. מוצג לצדה מה שנקרא מהנייר באותה שורה — תיאור, כמות ומחיר מודפס —
+// כדי שאפשר יהיה להשוות מול התעודה בלי לפתוח את פירוט 33 השורות.
+function priceAuditChoiceHtml(r) {
+  const c = r && r.choice;
+  if (!c || !Array.isArray(c.candidates) || c.candidates.length < 2) return '';
+  const money = n => n == null ? '' : '₪' + fmtUnitPrice(n, true);
+  const paper = ['תעודה ' + (r.documentNumber || String(r.documentIndex + 1)), 'שורה ' + (r.line ?? 'לא נקראה'),
+    '"' + r.name + '"', r.quantity == null ? '' : r.quantity + ' יח׳',
+    r.originalUnitPrice == null ? '' : 'מחיר מודפס ' + money(r.originalUnitPrice)].filter(Boolean).join(' · ');
+  const buttons = c.candidates.map(candidate => '<button data-role="ai-confirm-name-candidate" data-doc="' + c.docIndex + '" data-row="' + c.rowIndex + '" data-candidate-id="' + htmlEscape(candidate.productId) + '" class="btn-tap w-full flex items-center justify-between gap-2 rounded-lg border-2 ' + (candidate.priceMatches ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white') + ' px-3 py-2.5 text-right mt-1.5">' +
+    '<span class="min-w-0"><span class="block font-black text-slate-800">' + htmlEscape(candidate.productName) + '</span><span class="block text-[10px] font-bold text-slate-500" dir="ltr">' + htmlEscape(candidate.barcode) + '</span></span>' +
+    '<span class="shrink-0 text-xs font-black ' + (candidate.priceMatches ? 'text-emerald-700' : 'text-slate-500') + '">' + money(candidate.price) + (candidate.priceMatches ? '<span class="block text-[10px]">תואם למחיר בשורה</span>' : '') + '</span></button>').join('');
+  return '<div class="mt-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-2.5">' +
+    '<div class="font-black text-amber-900 text-xs"><i class="fa-solid fa-code-branch ml-1"></i>שתי קריאות של הברקוד החזירו ספרות שונות — בדוק בנייר איזה מוצר בשורה</div>' +
+    '<div class="text-[11px] font-bold text-amber-800 mt-1">' + htmlEscape(paper) + '</div>' + buttons + '</div>';
+}
 function receiptPriceAuditHtml(report) {
   const a = report || receiptPriceAudit();
   if (a.state === 'empty') return '';
@@ -10032,11 +10124,10 @@ function receiptPriceAuditHtml(report) {
   if (a.state === 'running' || a.state === 'unsaved') return shell + '<b>' + (a.state === 'running' ? 'בדיקת המחירים תופיע אחרי השלמת הפענוח ושמירתו. אפשר להמשיך לסרוק.' : 'בדיקת המחירים ממתינה לשמירת הפענוח בהצלחה.') + '</b></section>';
   const differences = a.rows.filter(r => r.result === 'difference'), missing = a.rows.filter(r => r.capability !== 'checkable');
   const money = n => n == null ? 'לא זמין' : '₪' + fmtUnitPrice(n, true);
-  const assumedDate = a.documents.some(d => d.dateAssumed);
-  const title = differences.length ? 'המחיר בתעודה שונה מהמחיר שבמאגר' : (a.complete ? ('המחירים שנבדקו תואמים' + (assumedDate ? ' · לפי תאריך משוער' : '')) : 'בדיקת המחירים אינה מלאה');
+  const title = differences.length ? 'המחיר בתעודה שונה מהמחיר שבמאגר' : (a.complete ? 'המחירים שנבדקו תואמים' : 'בדיקת המחירים אינה מלאה');
   const cards = a.rows.map(r => '<article data-price-row="' + htmlEscape(r.id) + '" data-price-result="' + htmlEscape(r.result || r.capability) + '" class="border-t border-slate-200 py-3">' +
     '<div class="font-black text-base">' + htmlEscape(r.name) + '</div><div class="text-xs text-slate-600">' + htmlEscape(r.code) + ' · כמות בתעודה: ' + (r.quantity == null ? 'חסרה' : r.quantity) + '</div>' +
-    '<div class="text-xs text-slate-600">תעודה ' + htmlEscape(r.documentNumber || String(r.documentIndex + 1) + ' (מספר לא נקרא)') + ' · עמוד ' + (r.page ?? 'לא נקרא') + ' · שורה ' + (r.line ?? 'לא נקראה') + ' · ' + htmlEscape(r.date || 'תאריך חסר') + (r.dateAssumed ? ' (משוער)' : '') + '</div>' +
+    '<div class="text-xs text-slate-600">תעודה ' + htmlEscape(r.documentNumber || String(r.documentIndex + 1) + ' (מספר לא נקרא)') + ' · עמוד ' + (r.page ?? 'לא נקרא') + ' · שורה ' + (r.line ?? 'לא נקראה') + ' · ' + htmlEscape(r.date || 'תאריך חסר') + '</div>' +
     '<div class="mt-2">מחיר יחידה מודפס: <b>' + money(r.originalUnitPrice) + '</b></div>' +
     (r.chargedUnitPrice != null ? '<div>מחיר לחיוב מחושב: <b>' + money(r.chargedUnitPrice) + '</b></div>' : '') +
     (r.chargeDerivation ? '<div class="text-xs text-slate-600 mt-1">' + htmlEscape(r.chargeDerivation) + '</div>' : '') +
@@ -10046,7 +10137,6 @@ function receiptPriceAuditHtml(report) {
       (r.comparisonPrice != null ? '<div>מחיר בתעודה באותו בסיס: <b>' + money(r.comparisonPrice) + '</b></div>' : '') +
       (r.result === 'difference' ? '<div>הפרש ליחידה: <b>' + money(o.unitDifference) + '</b> · הפרש לשורה: <b>' + money(o.lineDifference) + '</b></div>' : '') + '</div>').join('') +
     '<div class="font-bold mt-2">' + htmlEscape(r.reason) + '</div>' +
-    (r.dateAssumed ? '<div class="text-xs bg-amber-50 border border-amber-300 rounded-lg p-2 mt-2">תאריך התעודה לא נקרא בפענוח. הבדיקה נעשתה לפי היום (' + htmlEscape(r.date || '') + '), ולכן תוקף המבצע כאן <b>משוער</b>. אם התעודה מתאריך אחר — עדכן את התאריך למעלה והבדיקה תחושב מחדש.</div>' : '') +
     (r.monthlyStatus ? '<div class="text-xs bg-blue-50 p-2 mt-2">' + htmlEscape(r.monthlyStatus) + '</div>' : '') + '</article>').join('');
   // A review with nothing to act on folds into a single line. Open, it filled the
   // receiving screen with notices and pushed the scan button below the fold. A
@@ -10062,17 +10152,8 @@ function receiptPriceAuditHtml(report) {
     '<span role="status">' + title + ' · ' + badge + '</span><i class="fa-solid fa-chevron-down hist-chevron shrink-0"></i></summary>' +
     '<div class="mt-1">' + differences.length + ' שורות עם פער · ' + missing.length + ' שורות שלא ניתן לבדוק</div>' +
     '<div class="text-xs text-slate-600 mt-1">ללא מע״מ · אותה יחידת מוצר · פיקדון בנפרד · לפי הכמות בנייר. הספירה אינה משפיעה על בדיקה זו.</div>' +
-    a.documents.map(d => {
-      const label = '<label class="block mt-2 font-bold">' + (d.dateAssumed ? 'תאריך התעודה ' : 'השלם תאריך לתעודה ') + htmlEscape(d.number || String(d.index + 1)) + '<input type="date" data-role="price-doc-date" data-doc="' + d.index + '" value="' + htmlEscape(d.date || '') + '" class="block w-full border rounded-lg p-2 mt-1" aria-label="תאריך התעודה לבדיקת מחירים"></label>';
-      const discount = d.summaryDiscount ? '<div class="mt-2 text-xs">הנחה בסיכום תעודה ' + htmlEscape(d.number || String(d.index + 1)) + ': ' + money(d.summaryDiscount) + ' · ' + htmlEscape(d.summaryStatus) + '</div>' : '';
-      // הסימון שהתאריך משוער נשאר קריא בשורה המקופלת עצמה; רק ההסבר ושדה התאריך מתקפלים,
-      // כי שירות הפענוח של יטבתה לעולם אינו מחזיר תאריך — הבלוק הפתוח הופיע בכל קליטה
-      // ותפס חמש שורות מעל הסכום ומעל הסריקה.
-      if (d.dateAssumed) return '<details class="mt-2"><summary class="flex items-center justify-between gap-2 text-xs font-black text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-2 py-1.5"><span><i class="fa-solid fa-triangle-exclamation"></i> תאריך משוער: ' + htmlEscape(dDisp(d.date)) + ' · עדכן</span><i class="fa-solid fa-chevron-down hist-chevron"></i></summary>' +
-        '<div class="text-xs mt-1">תאריך התעודה לא נקרא בפענוח. ההשוואה נעשתה לפי היום. אם התעודה מתאריך אחר, עדכן כאן והבדיקה תחושב מחדש.</div>' + label + '</details>' + discount;
-      if (d.date) return '<details><summary class="cursor-pointer mt-2">תאריך התעודה: ' + htmlEscape(d.date) + ' · עריכה</summary>' + label + '</details>' + discount;
-      return label + discount;
-    }).join('') +
+    a.rows.filter(r => r.choice).map(priceAuditChoiceHtml).join('') +
+    priceAuditDatesHtml(a, money) +
     '<details data-price-details><summary class="cursor-pointer font-black py-3">פתח פירוט מחירים ומצבים לבדיקה (' + a.rows.length + ')</summary>' + cards + '</details></details></section>';
 }
 function priceAuditSetDate(index, value) {
@@ -10329,6 +10410,99 @@ function aiBarcodeEvidenceCandidate(value, readType, catalogHintId) {
   }
   return null;
 }
+// ===== קונפליקט בין שתי קריאות ברקוד =====
+// שתי קריאות עצמאיות שהחזירו ספרות שונות אינן מבוי סתום. כל קריאה מצביעה
+// על מועמד, והמאגר המקומי הוא שקובע מי מהם בכלל קיים. כאן נאספים המועמדים
+// החוקיים בלבד — ברקוד תקין וייחודי במאגר — עם סיווג הראיה שמאחוריהם:
+// 'digits' לקריאה מלאה שעברה ספרת ביקורת, 'hint' למועמד שכל מקורו ברמז שם.
+// הסיווג הוא שמכריע בהמשך, כי ברקוד תקין גובר על ניחוש לפי שם.
+function aiConflictReadCandidates(row) {
+  if (!row || typeof row !== 'object') return [];
+  const byProduct = new Map();
+  const add = (value, evidence) => {
+    const barcode = normalizeBarcode(value);
+    if (!aiCatalogBarcodeIsSafe(barcode)) return;
+    const matches = aiCatalogBarcodeMatches(barcode, false);
+    if (matches.length !== 1) return;
+    const id = String(matches[0].product.id), existing = byProduct.get(id);
+    if (existing) { if (evidence === 'digits') existing.evidence = 'digits'; return; }
+    byProduct.set(id, { product: matches[0].product, barcode: matches[0].barcode, evidence });
+  };
+  const addHintId = value => {
+    const id = String(value == null ? '' : value);
+    if (!id) return;
+    const product = (products || []).find(item => String(item && item.id) === id);
+    if (product) add(product.barcode, 'hint');
+  };
+  // ראיית ספרות נספרת רק כשהקריאה מלאה, עברה ספרת ביקורת ויושבת על מוצר יחיד.
+  [[row.barcodeInitialObserved, row.barcodeInitialReadType], [row.barcodeRetryObserved, row.barcodeRetryReadType], [row.barcodeObserved, row.barcodeReadType]]
+    .forEach(([observed, readType]) => {
+      const value = normalizeBarcode(observed);
+      if (String(readType || '') === 'full' && aiIsValidEan13(value)) add(value, 'digits');
+    });
+  // מועמדי הקונפליקט שהשרת הצהיר עליהם ורמזי השם — ראיה חלשה יותר. מועמד
+  // שכבר נכנס מכוח ספרות תקינות שומר על סיווגו החזק.
+  [row.barcodeRetryConflictInitialCandidate, row.barcodeRetryConflictRetryCandidate]
+    .concat(Array.isArray(row.barcodeRetryConflictHintCandidates) ? row.barcodeRetryConflictHintCandidates : [])
+    .forEach(value => add(value, 'hint'));
+  [row.catalogHintId, row.catalogHintIdInitial, row.barcodeRetryCatalogHintId, row.barcodeRetryConflictInitialHintId, row.barcodeRetryConflictRetryHintId]
+    .concat(Array.isArray(row.barcodeRetryConflictInitialHintCandidates) ? row.barcodeRetryConflictInitialHintCandidates : [])
+    .concat(Array.isArray(row.barcodeRetryConflictRetryHintCandidates) ? row.barcodeRetryConflictRetryHintCandidates : [])
+    .forEach(addHintId);
+  return Array.from(byProduct.values());
+}
+function aiConflictChoiceRow(row) {
+  return !!row && (row.barcodeRetryConflict === true || String(row.barcodeMatchMethod || '') === 'conflicting_reads');
+}
+// סדר ההכרעה קבוע ומוכח, ואינו מנחש:
+// 1. בדיוק מועמד אחד נשען על ברקוד תקין וייחודי — כל היתר, אם ישנם, הם
+//    רמזי שם. נדרש לו גם חיזוק עצמאי אחד: הקריאה השנייה רחוקה ממנו בספרה
+//    אחת והוא שכנה היחיד במאגר (החלקת OCR קלאסית), השם המודפס תואם, או
+//    המחיר המודפס תואם. בשני הראשונים הספרות הן שמכריעות וההכרעה אינה
+//    מעגלית; בשלישי המחיר הוא ראיית הזהות, ולכן אסור לו לאשר את עצמו.
+// 2. אין מועמד יחיד עם ספרות תקינות — מנסים שם ומחיר יחד, ואז מחיר בלבד.
+//    הכרעה כזאת תמיד מסומנת priceAssisted.
+// 3. אחרת לא מכריעים: המועמדים חוזרים לבחירת המשתמש מול הנייר.
+function aiConflictResolution(row) {
+  const candidates = aiConflictReadCandidates(row);
+  if (!candidates.length) return null;
+  const observed = normalizeBarcode(row.barcodeRetryObserved) || normalizeBarcode(row.barcodeObserved) || normalizeBarcode(row.barcodeInitialObserved) || 'לא נקרא';
+  const description = String(row.description || '').trim();
+  const qtyRaw = row.quantity == null || row.quantity === '' ? NaN : Number(row.quantity);
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : null;
+  const cents = aiMoneyCents(row.lineTotalExVat);
+  const priceOk = product => qty != null && aiPriceCorroborates(row, qty, cents, product);
+  const nameOk = product => !!description && aiPrintedNameMatchesProduct(description, product.name);
+  const decide = (candidate, method, priceAssisted) => ({
+    product: candidate.product, barcode: candidate.barcode, observed, method, priceAssisted: priceAssisted === true,
+    identityEvidence: { proofModel: method, conflictCandidates: candidates.map(item => String(item.product.id)) }
+  });
+  const undecided = () => candidates.length >= 2 ? { candidates, observed } : null;
+  // מועמד יחיד הנשען על ספרות תקינות אינו פטור מחיזוק: הקריאה השנייה עדיין
+  // חלקה עליו, ולכן נדרשת ראיה עצמאית אחת לפחות גם כשאין לו יריב במאגר.
+  const digits = candidates.filter(item => item.evidence === 'digits');
+  if (digits.length === 1) {
+    const winner = digits[0];
+    const slip = [row.barcodeInitialObserved, row.barcodeRetryObserved, row.barcodeObserved].some(value => {
+      const raw = normalizeBarcode(value);
+      if (!raw || raw === winner.barcode || !aiBarcodeOneDigitDifference(raw, winner.barcode)) return false;
+      const neighbours = aiCatalogBarcodeOneDigitMatches(raw);
+      return neighbours.length === 1 && neighbours[0].barcode === winner.barcode;
+    });
+    if (slip) return decide(winner, 'conflict_digits_one_digit_slip', false);
+    if (nameOk(winner.product)) return decide(winner, 'conflict_digits_name', false);
+    // המחיר לבדו עדיין מכריע, אבל אז הוא ראיית הזהות ולא ניתן לאשר אותו.
+    if (priceOk(winner.product)) return decide(winner, 'conflict_digits_price', true);
+    return undecided();
+  }
+  const pool = digits.length >= 2 ? digits : candidates;
+  const namePrice = pool.filter(item => nameOk(item.product) && priceOk(item.product));
+  if (namePrice.length === 1) return decide(namePrice[0], 'conflict_name_price', true);
+  if (namePrice.length) return undecided();
+  const priceOnly = pool.filter(item => priceOk(item.product));
+  if (priceOnly.length === 1) return decide(priceOnly[0], 'conflict_price', true);
+  return undecided();
+}
 function aiBarcodeRetryEvidenceError(row) {
   if (!row || typeof row !== 'object') return '';
   if (row.barcodeRetryConflict === true || String(row.barcodeMatchMethod || '') === 'conflicting_reads') {
@@ -10538,8 +10712,29 @@ function aiResolveInvoiceBarcode(row) {
   const observed = normalizeBarcode(observedRaw);
   const observedPattern = aiNormalizeBarcodePattern(observedRaw);
   const resolved = normalizeBarcode(row && row.barcode != null ? row.barcode : '');
-  const retryEvidenceError = aiBarcodeRetryEvidenceError(row);
-  if (retryEvidenceError) return { error: retryEvidenceError };
+  // שורה שהמשתמש כבר הכריע בה את הקונפליקט נבדקת בענף user_confirmed, שם
+  // רשימת המועמדים נגזרת מחדש מהשורה והבחירה מאומתת מולה.
+  const conflictConfirmed = method === 'user_confirmed' && String(row && row.barcodeUserConfirmedFromMethod || '') === 'conflicting_reads';
+  const retryEvidenceError = conflictConfirmed ? '' : aiBarcodeRetryEvidenceError(row);
+  if (retryEvidenceError) {
+    const conflict = aiConflictResolution(row);
+    if (conflict && conflict.product) return conflict;
+    if (conflict && Array.isArray(conflict.candidates)) {
+      return {
+        error: retryEvidenceError,
+        suggestion: {
+          candidates: conflict.candidates.map(item => ({ product: item.product, barcode: item.barcode })),
+          observed: conflict.observed,
+          method: 'conflicting_reads',
+          printedDescription: String(row && row.description || '').trim(),
+          nameOnly: true,
+          multipleName: true,
+          barcodeConflict: true
+        }
+      };
+    }
+    return { error: retryEvidenceError };
+  }
   if (method === 'invalid_checksum') {
     return { error: 'הברקוד המלא שנקרא נכשל בבדיקת ספרת הביקורת — אין התאמה אוטומטית ויש לבדוק את צילום השורה' };
   }
@@ -10642,6 +10837,15 @@ function aiResolveInvoiceBarcode(row) {
       const selectedId = String(row && row.barcodeUserConfirmedFromCatalogHintId || '');
       const selectedCandidate = nameCandidates.find(candidate => String(candidate.product && candidate.product.id) === selectedId);
       if (!selectedCandidate || selectedCandidate.barcode !== resolved || String(matches[0].product.id) !== selectedId) return { error: 'אישור המשתמש אינו תואם לאחת מאפשרויות השם שהוצגו' };
+    } else if (sourceMethod === 'conflicting_reads') {
+      // רשימת המועמדים נגזרת מחדש מקריאות הברקוד עצמן, שאינן משתנות באישור.
+      // בחירה שאינה עוד אחת מהן — למשל אחרי שינוי ברקוד במאגר — נפסלת.
+      const conflictCandidates = aiConflictReadCandidates(row);
+      const selectedId = String(row && row.barcodeUserConfirmedFromCatalogHintId || '');
+      const selectedCandidate = conflictCandidates.find(candidate => String(candidate.product && candidate.product.id) === selectedId);
+      if (conflictCandidates.length < 2 || !selectedCandidate || selectedCandidate.barcode !== resolved || String(matches[0].product.id) !== selectedId) {
+        return { error: 'אישור המשתמש אינו תואם לאחת מקריאות הברקוד שהוצגו לשורה' };
+      }
     } else if (sourceMethod === 'verified_unknown_full') {
       const initial = normalizeBarcode(row && row.barcodeInitialObserved || '');
       const retry = normalizeBarcode(row && row.barcodeRetryObserved || '');
@@ -10795,6 +10999,11 @@ function aiAutoResolveMethodHe(method) {
   if (method === 'auto_local_name_same_price') return 'שם ומחיר (מועמדים שווי מחיר)';
   if (method.indexOf('_qty_price') !== -1) return 'התאמת כמות ומחיר';
   if (method.indexOf('_qty') !== -1) return 'התאמת כמות לספירה';
+  if (method === 'conflict_digits_one_digit_slip') return 'ברקוד תקין; הקריאה השנייה נבדלת ממנו בספרה אחת בלבד';
+  if (method === 'conflict_digits_name') return 'ברקוד תקין ויחיד במאגר, והשם המודפס תואם';
+  if (method === 'conflict_digits_price') return 'ברקוד תקין ויחיד במאגר, והמחיר המודפס תואם';
+  if (method === 'conflict_name_price') return 'שם ומחיר הכריעו בין קריאות הברקוד';
+  if (method === 'conflict_price') return 'המחיר הכריע בין קריאות הברקוד';
   if (method === 'auto_name_price_unique') return 'המחיר מבדיל בין השמות הדומים';
   if (method === 'auto_name_qty_unique') return 'הכמות מבדילה בין השמות הדומים';
   if (method === 'auto_name_same_price_first') return 'מועמדים באותו מחיר — זהה כספית';
@@ -10855,7 +11064,9 @@ function aiAutoResolvePendingRow(pending, aggregates) {
     if (qtyCandidates.length === 1) {
       return { product: qtyCandidates[0].product, barcode: qtyCandidates[0].barcode, method: 'auto_name_qty_unique' };
     }
-    if (priceCandidates.length >= 2) {
+    // בקונפליקט ברקוד "אותו מחיר" אינו נימוק לבחור את הראשון: מדובר בשני
+    // מוצרים שונים משתי קריאות שונות, ושוויון מחיר אינו ראיית זהות.
+    if (priceCandidates.length >= 2 && suggestion.barcodeConflict !== true) {
       const priceList = priceCandidates.map(candidate => aiMoneyCents(Number(candidate.product.price) || 0));
       const samePrice = priceList.every(value => value != null && Math.abs(value - priceList[0]) <= 2);
       if (samePrice) {
@@ -11158,6 +11369,9 @@ function aiEvaluateInvoiceScan(payload) {
       if (['unique_suffix', 'unique_full_pattern', 'unique_suffix_pattern'].includes(barcodeMatch.method)) warnings.push(product.name + ': הותאם בוודאות לפי הספרות שנקראו (' + barcodeMatch.observed + ')');
       if (['verified_suffix_name', 'verified_pattern_name', 'verified_one_digit_name'].includes(barcodeMatch.method)) warnings.push(product.name + ': הותאם אוטומטית לפי ראיית ברקוד יחידה ורמז שם תואם');
       if (barcodeMatch.method === 'verified_name_price') warnings.push(product.name + ': הותאם לפי שם יחיד והצלבת מחיר/חשבון מקומית');
+      // הכרעת קונפליקט ברקוד נרשמת תמיד, גם כשהיא חד-משמעית: היא הוחלטה
+      // במכשיר ולא נקראה מהנייר, ולכן חייבת להיות ניתנת לביקורת.
+      if (String(barcodeMatch.method || '').indexOf('conflict_') === 0) warnings.push(product.name + ': שתי קריאות הברקוד נבדלו והוכרעו — ' + aiAutoResolveMethodHe(barcodeMatch.method));
       // v183: מועמד הפיקדון נאסף לפני שער החשבון. ב-v182 שורת ה-ICE עצמה
       // נתקעה, ולכן המוצר לא נרשם כמועמד והשלמת שורת הפיקדון לא יכלה לרוץ.
       if (qty != null && qty > 0 && Number(product.deposit) > 0) docDepositCandidates.push({ product, qty, cents: Math.round(Number(product.deposit) * qty * 100) });
@@ -12331,12 +12545,15 @@ function aiConfirmNameCandidate(documentIndex, rowIndex, candidateProductId) {
   if (!aiScanResponse || !aiScanResponse.scan || !Array.isArray(aiScanResponse.scan.documents)) return false;
   const doc = aiScanResponse.scan.documents.find(item => Number(item && item.noteIndex) === Number(documentIndex));
   const row = doc && Array.isArray(doc.rows) ? doc.rows[Number(rowIndex)] : null;
-  if (!row || String(row.barcodeMatchMethod || '') !== 'suggested_name_multiple') {
+  // שתי צורות בחירה מגיעות לכאן: שם עמום שהשרת החזיר לו כמה מועמדים,
+  // וקונפליקט בין שתי קריאות ברקוד שההכרעה האוטומטית לא סגרה.
+  const conflictChoice = aiConflictChoiceRow(row);
+  if (!row || (String(row.barcodeMatchMethod || '') !== 'suggested_name_multiple' && !conflictChoice)) {
     showToast('אפשרויות המוצר כבר אינן זמינות — הפעל את הסריקה מחדש', null, null, 3400); return false;
   }
   // אין אמון במזהה שהגיע מה-DOM: מפיקים מחדש את הרשימה המותרת מהשורה,
   // מאמתים כל ברקוד מול הקטלוג המקומי ורק אז מקבלים את בחירת המשתמש.
-  const candidates = aiLocalSuggestedNameCandidates(row);
+  const candidates = aiRowChoiceCandidates(row);
   const selectedId = String(candidateProductId == null ? '' : candidateProductId);
   const selected = candidates.find(candidate => String(candidate.product && candidate.product.id) === selectedId);
   if (!selected) {
@@ -12355,7 +12572,7 @@ function aiConfirmNameCandidate(documentIndex, rowIndex, candidateProductId) {
   const receivedQty = receivedLine ? (Number(receivedLine.received) || 0) : 0;
   row.barcodeUserConfirmedFromObserved = row.barcodeObserved;
   row.barcodeUserConfirmedFromReadType = row.barcodeReadType;
-  row.barcodeUserConfirmedFromMethod = 'suggested_name_multiple';
+  row.barcodeUserConfirmedFromMethod = conflictChoice ? 'conflicting_reads' : 'suggested_name_multiple';
   row.barcodeUserConfirmedFromCatalogHintId = selectedId;
   row.barcodeUserConfirmedCandidateIds = candidates.map(candidate => String(candidate.product.id));
   row.barcodeUserConfirmedCrossCheck = {
@@ -12378,6 +12595,10 @@ function aiConfirmNameCandidate(documentIndex, rowIndex, candidateProductId) {
   saveReceiptDraft();
   aiScanError = aiScanEvaluation.valid ? '' : 'הפענוח עדיין דורש בדיקה — התעודה לא שונתה.';
   if (currentView === 'reconcile') renderReconcile();
+  // הבחירה מוצגת גם בתוך בדיקת המחירים במסך הקליטה, ולכן הפאנל שם חייב
+  // להתרענן — אחרת השורה ממשיכה לבקש בחירה שכבר נעשתה.
+  else if (currentView === 'receiving') renderReceiving();
+  refreshPriceAuditViews();
   showToast('המוצר שבחרת אושר. התוצאות חושבו מחדש.', null, null, 2600);
   return true;
 }
@@ -12635,9 +12856,11 @@ function aiConfirmedMappingsAudit() {
       const qtyRaw = row.quantity == null || row.quantity === '' ? NaN : Number(row.quantity);
       const qty = isFinite(qtyRaw) ? qtyRaw : null;
       const lineTotal = aiLineTotal(row, qty);
-      const multipleNameChoice = sourceMethod === 'suggested_name_multiple';
+      // בחירה מתוך רשימה — שם עמום או קונפליקט ברקוד — מתועדת עם כל
+      // המועמדים שהוצגו, כדי שהאישור יישאר בר-אימות גם אחרי רענון.
+      const multipleNameChoice = sourceMethod === 'suggested_name_multiple' || sourceMethod === 'conflicting_reads';
       const currentCandidateIds = multipleNameChoice
-        ? aiLocalSuggestedNameCandidates(row).map(candidate => String(candidate.product.id))
+        ? aiRowChoiceCandidates(row).map(candidate => String(candidate.product.id))
         : [];
       const storedCandidateIds = multipleNameChoice && Array.isArray(row.barcodeUserConfirmedCandidateIds)
         ? row.barcodeUserConfirmedCandidateIds.map(id => String(id == null ? '' : id)).filter(Boolean)

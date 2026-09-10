@@ -9,9 +9,9 @@ const report = c => JSON.parse(c.run('JSON.stringify(receiptPriceAudit())'));
 const requests = c => c.requests.filter(r => r.body).length;
 const view = c => { c.run('renderReceiving()'); return c.node('app').innerHTML; };
 const evidence = [];
-function fixture({unit=5,qty=10,base=5,discount=0,promo=null,date='2026-09-09',summary=0,rows=null,pages=1}={}) {
+function fixture({unit=5,qty=10,base=5,discount=0,promo=null,date='2026-09-09',summary=0,rows=null,pages=1,extraProducts=[]}={}) {
  const products=[{id:'milk',name:'מוצר בדיקה',code:'8',barcode:'7290000000008',price:base*(1-discount/100),listPrice:base,discountPct:discount,discountSet:true},
- {id:'coffee',name:'מוצר שני',code:'15',barcode:'7290000000015',price:5,listPrice:5,discountPct:0,discountSet:true}];
+ {id:'coffee',name:'מוצר שני',code:'15',barcode:'7290000000015',price:5,listPrice:5,discountPct:0,discountSet:true},...extraProducts];
  const r={section:'items',code:'8',itemCode:'8',supplierItemCode:'8',description:'מוצר בדיקה',barcode:'7290000000008',barcodeObserved:'7290000000008',barcodeReadType:'full',barcodeMatchMethod:'exact_full',sourcePage:1,lineNumber:1,quantity:qty,unitPriceExVat:unit,grossLineTotalExVat:unit*qty,lineTotalExVat:unit*qty,lineDiscountExVat:0,confidence:.99};
  rows=rows||[r]; const sum=rows.reduce((n,r)=>n+r.lineTotalExVat,0), units=rows.reduce((n,r)=>n+r.quantity,0);
  const doc={noteIndex:0,docNumber:'INV-100',invoiceNumber:'INV-100',docType:'invoice',pageCount:pages,rows,confidence:.99,
@@ -103,39 +103,134 @@ if(supplier!=='berman'){
  });
 }
 if(supplier==='yotvata'){
- test('yotvata: missing date falls back to today, flagged as assumed, and is correctable',async()=>{
+ test('yotvata: an unread date defaults silently to today and stays correctable',async()=>{
   const data=fixture({unit:6}),c=create(data);let html=await scan(c,data,{completeDate:false});
-  // The service returns no document date. The row is still evaluated, but the
-  // assumption must be visible everywhere the verdict is shown.
+  // The service never returns a document date. That is not a finding for the
+  // user: the receiving day is the default, quietly, and the field stays open.
   assert.match(html,/data-role="price-doc-date"/);
   let r=report(c).rows[0];
   assert.equal(r.result,'difference');
-  assert.equal(r.dateAssumed,true);
   assert.equal(r.date,c.run('todayStr()'));
-  assert.equal(report(c).documents[0].dateAssumed,true);
-  assert.match(html,/משוער/);
-  assert.match(html,/תאריך התעודה לא נקרא בפענוח/);
-  // An assumed date must never be hidden behind a collapsed summary: it is the
-  // summary line itself, so only the explanation and the field fold away.
-  assert.match(html,/<summary[^>]*>(?:(?!<\/summary>)[\s\S])*תאריך משוער/);
-  assert.doesNotMatch(html,/<summary[^>]*>תאריך התעודה: /);
-  // Supplying the real date clears the assumption and every marker with it.
+  assert.doesNotMatch(html,/משוער/);
+  assert.doesNotMatch(html,/תאריך התעודה לא נקרא בפענוח/);
+  // The date is a plain collapsed fact line, never an amber warning.
+  assert.match(html,/<summary[^>]*>תאריך התעודה: /);
+  assert.doesNotMatch(html,/fa-triangle-exclamation[^<]*<\/i> תאריך/);
+  // Supplying a real date still overrides the default and recomputes.
   await c.events.get('app:change')({target:{dataset:{role:'price-doc-date',doc:'0'},value:'2026-09-09'}});
   html=view(c); r=report(c).rows[0];
   assert.equal(r.result,'difference');
   assert.equal(r.dateAssumed,false);
   assert.equal(r.date,'2026-09-09');
-  assert.doesNotMatch(html,/תאריך התעודה לא נקרא בפענוח/);
   assert.equal(c.run('receiptList.length'),0);assert.equal(requests(c),1);
  });
- test('yotvata: an assumed date never reads as a clean pass',async()=>{
+ test('yotvata: a defaulted date still reads as a clean pass',async()=>{
   const data=fixture({unit:5}),c=create(data);const html=await scan(c,data,{completeDate:false});
   const r=report(c).rows[0];
   assert.equal(r.result,'match');
-  assert.equal(r.dateAssumed,true);
-  // headline must carry the caveat rather than a bare "prices match"
-  assert.match(html,/המחירים שנבדקו תואמים · לפי תאריך משוער/);
+  assert.equal(r.date,c.run('todayStr()'));
+  // No caveat in the headline — the default is not a defect to report.
+  assert.match(html,/המחירים שנבדקו תואמים · 1 שורות/);
+  assert.doesNotMatch(html,/משוער/);
   assert.equal(requests(c),1);
+ });
+ test('yotvata: two documents share one date line instead of two identical ones',async()=>{
+  const data=fixture({unit:5}),c=create(data);const html=await scan(c,data,{documents:2,completeDate:false});
+  // Two notes used to render two byte-identical amber "assumed date" rows with
+  // no document number, so neither could be told apart nor targeted.
+  assert.equal((html.match(/data-role="price-doc-date"/g)||[]).length,2);
+  assert.equal((html.match(/תאריך התעודות: /g)||[]).length,1);
+  assert.doesNotMatch(html,/משוער/);
+  // Different dates per document fall back to naming each document on the line.
+  c.run("priceAuditSetDate(0,'2026-09-09');priceAuditSetDate(1,'2026-08-31')");
+  const split=view(c);
+  assert.match(split,/תאריכי התעודות: /);
+  assert.doesNotMatch(split,/תאריך התעודות: /);
+ });
+ // ===== קונפליקט בין שתי קריאות ברקוד =====
+ // עד כאן שורה כזאת הייתה מבוי סתום: אין התאמה, אין מועמדים ואין כפתור.
+ const HUMMUS={id:'hummus',name:'חומוס חלק 400',code:'90',barcode:'7290105964564',price:6.57,listPrice:6.57,discountPct:0,discountSet:true};
+ const AHLA={id:'ahla',name:'החומוסייה של אחלה 400 גרם',code:'91',barcode:'7290119390700',price:9.98,listPrice:9.98,discountPct:0,discountSet:true};
+ const conflictRow=over=>({section:'items',description:'שורה לא ברורה',barcode:null,barcodeReadType:'full',
+  barcodeMatchMethod:'conflicting_reads',barcodeRetryAttempted:true,barcodeRetryApplied:false,barcodeRetryConflict:true,
+  barcodeInitialReadType:'full',barcodeRetryReadType:'full',barcodeRetryConfidence:.99,
+  sourcePage:1,lineNumber:1,quantity:6,lineDiscountExVat:0,confidence:.82,...over});
+ const priced=(row,unit)=>({...row,unitPriceExVat:unit,grossLineTotalExVat:unit*row.quantity,lineTotalExVat:unit*row.quantity});
+ test('yotvata: a valid barcode read beats a name hint and the row becomes checkable',async()=>{
+  // The real production case: one read fails its EAN-13 check digit and the
+  // server fell back to a name hint; the other read is valid, unique in the
+  // catalog, and sits exactly one digit away from the failed one.
+  const row=priced(conflictRow({description:'חומוס אחלה 400',
+   barcodeObserved:'7290105904564',barcodeInitialObserved:'7290105904564',catalogHintId:'ahla',catalogHintIdInitial:'ahla',
+   barcodeRetryObserved:'7290105964564',barcodeRetryCatalogHintId:'hummus',
+   barcodeRetryConflictInitialCandidate:'7290119390700',barcodeRetryConflictRetryCandidate:'7290105964564'}),6.57);
+  const data=fixture({rows:[row],extraProducts:[HUMMUS,AHLA]}),c=create(data);
+  const html=await scan(c,data,{completeDate:false});
+  const resolution=JSON.parse(c.run("JSON.stringify(aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]),(k,v)=>k==='product'?v.id:v)"));
+  assert.equal(resolution.product,'hummus');
+  assert.equal(resolution.method,'conflict_digits_one_digit_slip');
+  // Digits decided it, not money — so the price audit may still judge the price.
+  assert.equal(resolution.priceAssisted,false);
+  const r=report(c).rows[0];
+  assert.equal(r.capability,'checkable');
+  assert.equal(r.result,'match');
+  assert.equal(report(c).complete,true);
+  assert.doesNotMatch(html,/בחר לפי הנייר/);
+  assert.match(html,/המחירים שנבדקו תואמים/);
+  assert.equal(requests(c),1);
+ });
+ test('yotvata: two equally valid reads are put to the user as a choice',async()=>{
+  const row=priced(conflictRow({barcodeObserved:'7290000000008',barcodeInitialObserved:'7290000000008',
+   barcodeRetryObserved:'7290000000015',
+   barcodeRetryConflictInitialCandidate:'7290000000008',barcodeRetryConflictRetryCandidate:'7290000000015'}),9);
+  const data=fixture({rows:[row]}),c=create(data);
+  const html=await scan(c,data,{completeDate:false});
+  assert.equal(report(c).rows[0].capability,'unidentified');
+  assert.match(html,/שתי קריאות של הברקוד החזירו ספרות שונות/);
+  // Both candidates are offered by name and barcode, with the paper line beside
+  // them, and neither is preselected.
+  assert.match(html,/data-role="ai-confirm-name-candidate"[^>]*data-candidate-id="milk"/);
+  assert.match(html,/data-role="ai-confirm-name-candidate"[^>]*data-candidate-id="coffee"/);
+  assert.match(html,/שורה לא ברורה/);
+  assert.equal(requests(c),1);
+ });
+ test('yotvata: choosing a candidate closes the row without another scan',async()=>{
+  const row=priced(conflictRow({barcodeObserved:'7290000000008',barcodeInitialObserved:'7290000000008',
+   barcodeRetryObserved:'7290000000015',
+   barcodeRetryConflictInitialCandidate:'7290000000008',barcodeRetryConflictRetryCandidate:'7290000000015'}),9);
+  const data=fixture({rows:[row]}),c=create(data);
+  await scan(c,data,{completeDate:false});
+  assert.equal(c.run("aiConfirmNameCandidate(0,0,'coffee')"),true);
+  const r=report(c).rows[0];
+  assert.equal(r.capability,'checkable');
+  assert.equal(r.productId,'coffee');
+  // The paper charges 9 against a catalog price of 5 — the gap must surface.
+  assert.equal(r.result,'difference');
+  const html=view(c);
+  assert.doesNotMatch(html,/בחר לפי הנייר/);
+  assert.equal(requests(c),1);
+  // A choice the row can no longer justify is refused on replay.
+  c.run("aiScanResponse.scan.documents[0].rows[0].barcodeUserConfirmedFromCatalogHintId='milk'");
+  assert.equal(c.run("!!(aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]).product)"),false);
+ });
+ test('yotvata: a conflict decided by price cannot then approve that price',async()=>{
+  // Both reads are valid and in the catalog, so digits do not decide. Name and
+  // price pick one — and that identity may never be used to bless the price.
+  const row=priced(conflictRow({description:'מוצר שני',barcodeObserved:'7290000000008',barcodeInitialObserved:'7290000000008',
+   barcodeRetryObserved:'7290000000015',
+   barcodeRetryConflictInitialCandidate:'7290000000008',barcodeRetryConflictRetryCandidate:'7290000000015'}),5);
+  const data=fixture({rows:[row]}),c=create(data);
+  const html=await scan(c,data,{completeDate:false});
+  const resolution=JSON.parse(c.run("JSON.stringify(aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]),(k,v)=>k==='product'?v.id:v)"));
+  assert.equal(resolution.product,'coffee');
+  assert.equal(resolution.method,'conflict_name_price');
+  assert.equal(resolution.priceAssisted,true);
+  const r=report(c).rows[0];
+  assert.equal(r.capability,'unidentified');
+  assert.match(r.reason,/אי אפשר לאשר בעזרתו את המחיר עצמו/);
+  // It is not a dead end either — no chooser is raised for a row already decided.
+  assert.equal(r.choice,null);
+  assert.doesNotMatch(html,/בחר לפי הנייר/);
  });
  test('yotvata: row discount and summary already included are not applied twice',async()=>{
   const data=fixture({promo:{},summary:10}),d=data.paper.scan.documents[0];Object.assign(d.rows[0],{lineTotalExVat:40,lineDiscountExVat:10});
