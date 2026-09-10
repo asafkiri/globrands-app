@@ -10108,7 +10108,13 @@ function receiptPriceAudit() {
 function priceAuditDatesHtml(a, money) {
   const docs = Array.isArray(a && a.documents) ? a.documents : [];
   if (!docs.length) return '';
-  const name = d => htmlEscape(d.number || String(d.index + 1));
+  // שתי תעודות יכולות לשאת אותו מספר מודפס, או שהמספר לא נקרא בכלל. במקרה
+  // כזה המספר לבדו אינו מזהה, ולכן נוסף אליו מקומה של התעודה בקליטה — אחרת
+  // חוזרות בדיוק שתי השורות הזהות שהתיקון הזה בא לסלק.
+  const printed = docs.map(d => String(d.number || ''));
+  const ambiguous = printed.some((value, i) => !value || printed.indexOf(value) !== i);
+  const name = d => htmlEscape(!ambiguous ? String(d.number)
+    : (d.number ? String(d.number) + ' (' + (d.index + 1) + ')' : String(d.index + 1)));
   const field = d => '<label class="block mt-2 font-bold">תאריך התעודה ' + name(d) +
     '<input type="date" data-role="price-doc-date" data-doc="' + d.index + '" value="' + htmlEscape(d.date || '') + '" class="block w-full border rounded-lg p-2 mt-1" aria-label="תאריך התעודה לבדיקת מחירים"></label>';
   const discount = d => d.summaryDiscount
@@ -10513,6 +10519,13 @@ function aiConflictResolution(row) {
   const digits = candidates.filter(item => item.evidence === 'digits');
   if (digits.length === 1) {
     const winner = digits[0];
+    // החלקת ספרה: הקריאה השנייה רחוקה מהמנצח בספרה אחת, והוא שכנה היחיד
+    // במאגר. הכלל בטוח מתוקף ספרת הביקורת עצמה — שינוי ספרת נתונים אחת
+    // משנה תמיד את ספרת הביקורת, ולכן שני ברקודי EAN-13 תקינים לעולם אינם
+    // נבדלים בספרה אחת בלבד. מכאן שהקריאה שנבדלת חייבת להיות פסולה, כלומר
+    // אינה מועמדת בפני עצמה, והמנצח אינו מתחרה באמת בשום קריאה תקינה.
+    // (ברקוד קצר מ-13 ספרות אינו נושא ספרת ביקורת; שם ההגנה היא הדרישה
+    // ל"שכן יחיד", ששתי אפשרויות מפילות אותה.)
     const slip = [row.barcodeInitialObserved, row.barcodeRetryObserved, row.barcodeObserved].some(value => {
       const raw = normalizeBarcode(value);
       if (!raw || raw === winner.barcode || !aiBarcodeOneDigitDifference(raw, winner.barcode)) return false;

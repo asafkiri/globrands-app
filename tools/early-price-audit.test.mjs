@@ -146,6 +146,34 @@ if(supplier==='yotvata'){
   const split=view(c);
   assert.match(split,/תאריכי התעודות: /);
   assert.doesNotMatch(split,/תאריך התעודות: /);
+  // Both notes carry the same printed number here, so the number alone cannot
+  // identify them and the position in the receipt is appended.
+  assert.match(split,/INV-100 \(1\) — 9\.9\.2026/);
+  assert.match(split,/INV-100 \(2\) — 31\.8\.2026/);
+ });
+ test('yotvata: a forged confirmation is refused, and a real one dies with the catalog',async()=>{
+  const HUM={id:'hummus',name:'חומוס חלק 400',code:'90',barcode:'7290105964564',price:6.57,listPrice:6.57,discountPct:0,discountSet:true};
+  const row={section:'items',description:'שורה',barcode:null,barcodeReadType:'full',barcodeMatchMethod:'conflicting_reads',
+   barcodeRetryAttempted:true,barcodeRetryApplied:false,barcodeRetryConflict:true,barcodeInitialReadType:'full',barcodeRetryReadType:'full',
+   barcodeRetryConfidence:.99,sourcePage:1,lineNumber:1,quantity:6,lineDiscountExVat:0,confidence:.82,
+   barcodeObserved:'7290000000008',barcodeInitialObserved:'7290000000008',barcodeRetryObserved:'7290000000015'};
+  const data=fixture({rows:[{...row,unitPriceExVat:99,grossLineTotalExVat:594,lineTotalExVat:594}],extraProducts:[HUM]}),c=create(data);
+  await scan(c,data,{completeDate:false});
+  const product=()=>c.run("(function(){var r=aiResolveInvoiceBarcode(aiScanResponse.scan.documents[0].rows[0]);return r&&r.product?r.product.id:'';})()");
+  // Writing user_confirmed onto the row by hand proves nothing and is refused.
+  c.run(`(function(){var r=aiScanResponse.scan.documents[0].rows[0];
+    r.barcodeMatchMethod='user_confirmed';r.barcodeUserConfirmedFromMethod='conflicting_reads';
+    r.barcode='7290000000015';r.userConfirmedAt=Date.now();})()`);
+  assert.equal(product(),'');
+  // Naming a candidate that is not the barcode actually written is refused too.
+  c.run("aiScanResponse.scan.documents[0].rows[0].barcodeUserConfirmedFromCatalogHintId='milk'");
+  assert.equal(product(),'');
+  // A real confirmation is accepted — until the catalog stops backing it.
+  c.run("delete aiScanResponse.scan.documents[0].rows[0].barcodeUserConfirmedFromMethod;aiScanResponse.scan.documents[0].rows[0].barcodeMatchMethod='conflicting_reads'");
+  assert.equal(c.run("aiConfirmNameCandidate(0,0,'coffee')"),true);
+  assert.equal(product(),'coffee');
+  c.run("products.find(p=>p.id==='coffee').barcode='7290105964564'");
+  assert.equal(product(),'');
  });
  // ===== קונפליקט בין שתי קריאות ברקוד =====
  // עד כאן שורה כזאת הייתה מבוי סתום: אין התאמה, אין מועמדים ואין כפתור.
